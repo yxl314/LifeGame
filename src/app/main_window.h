@@ -1,0 +1,94 @@
+#pragma once
+
+#include <QMainWindow>
+
+#include <memory>
+
+class QAction;
+class QActionGroup;
+
+namespace lifegame::controller
+{
+class BoardController;
+class ConfigurationController;
+class FileController;
+class JumpController;
+class SessionController;
+class SimulationController;
+} // namespace controller
+
+namespace lifegame::model
+{
+class LifeModel;
+}
+
+namespace lifegame::service
+{
+class SettingsStore;
+}
+
+namespace lifegame::view
+{
+class BoardView;
+class ControlPanel;
+class PatternCatalog;
+class RuleCatalog;
+class StatusBarView;
+} // namespace view
+
+namespace lifegame::app
+{
+
+/**
+ * Composition root only.
+ *
+ * Creates the model, views, catalogs, services and controllers; wires menus
+ * and the toolbar; nothing here implements game rules or persistence.
+ */
+class MainWindow : public QMainWindow
+{
+    Q_OBJECT
+
+public:
+    explicit MainWindow(QWidget* parent = nullptr);
+    ~MainWindow() override;
+
+private:
+    void setupCentralWidget();
+    void setupStatusBar();
+    void setupMenus();
+    void setupToolBar();
+    void showControlsHelp();
+    void showAbout();
+
+    model::LifeModel* m_model = nullptr;
+    view::BoardView* m_view = nullptr;
+    view::ControlPanel* m_panel = nullptr;
+    view::RuleCatalog* m_ruleCatalog = nullptr;
+    view::PatternCatalog* m_patternCatalog = nullptr;
+    view::StatusBarView* m_statusBar = nullptr;
+
+    controller::BoardController* m_boardController = nullptr;
+    controller::SimulationController* m_simulationController = nullptr;
+    controller::JumpController* m_jumpController = nullptr;
+    controller::FileController* m_fileController = nullptr;
+    controller::ConfigurationController* m_configurationController = nullptr;
+    controller::SessionController* m_sessionController = nullptr;
+
+    std::unique_ptr<service::SettingsStore> m_settingsStore;
+
+    QAction* m_openAction = nullptr;
+    QAction* m_saveAction = nullptr;
+    QAction* m_exportAction = nullptr;
+    QAction* m_playAction = nullptr;
+    QAction* m_stepAction = nullptr;
+    QAction* m_randomAction = nullptr;
+    QAction* m_clearAction = nullptr;
+    QAction* m_zoomInAction = nullptr;
+    QAction* m_zoomOutAction = nullptr;
+    QAction* m_resetZoomAction = nullptr;
+    QAction* m_gridAction = nullptr;
+    QActionGroup* m_ruleGroup = nullptr;
+};
+
+} // namespace lifegame::app

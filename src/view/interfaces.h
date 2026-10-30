@@ -1,0 +1,36 @@
+#pragma once
+
+#include <QString>
+
+#include <functional>
+#include <memory>
+
+#include "model/jump_info.h"
+
+namespace lifegame::view
+{
+
+/// Narrow interface used by controllers to report transient status text.
+class MessageSink
+{
+public:
+    virtual ~MessageSink() = default;
+    virtual void showMessage(const QString& text, int timeoutMs) = 0;
+};
+
+/// Narrow interface for the jump progress presentation, so JumpController can
+/// be unit-tested with a fake.
+class JumpProgressView
+{
+public:
+    virtual ~JumpProgressView() = default;
+
+    virtual void show(const model::JumpInfo& info) = 0;
+    virtual void setProgress(int done) = 0;
+    virtual void close() = 0;
+    virtual void setCancelHandler(std::function<void()> handler) = 0;
+};
+
+using JumpProgressFactory = std::function<std::unique_ptr<JumpProgressView>()>;
+
+} // namespace lifegame::view

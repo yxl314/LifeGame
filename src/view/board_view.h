@@ -1,0 +1,126 @@
+#pragma once
+
+#include <QImage>
+#include <QPixmap>
+#include <QPoint>
+#include <QRectF>
+#include <QVector>
+#include <QWidget>
+
+namespace lifegame::domain
+{
+class Grid;
+}
+
+namespace lifegame::model
+{
+class LifeModel;
+}
+
+namespace lifegame::view
+{
+
+/**
+ * Custom-painted board view.
+ *
+ * Classic MVC observation: the view holds a const model pointer, connects to
+ * model signals and reads `model->board()` directly while painting. It never
+ * copies the board and never calls a mutating model method.
+ */
+class BoardView : public QWidget
+{
+    Q_OBJECT
+
+public:
+    explicit BoardView(QWidget* parent = nullptr);
+
+    void setModel(const model::LifeModel* model);
+
+    QSize sizeHint() const override;
+    QSize minimumSizeHint() const override;
+
+    bool gridVisible() const;
+    QImage renderBoardImage() const;
+
+public slots:
+    void setStampPreview(const QVector<QPoint>& offsets);
+    void setGridVisible(bool visible);
+    void zoomIn();
+    void zoomOut();
+    void resetZoom();
+
+signals:
+    void cellPressed(int row, int col);
+    void cellDragged(int row, int col);
+    void cellReleased(int row, int col);
+
+protected:
+    void paintEvent(QPaintEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
+    void mousePressEvent(QMouseEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
+    void wheelEvent(QWheelEvent* event) override;
+    void leaveEvent(QEvent* event) override;
+
+private slots:
+    void onBoardChanged();
+    void onBoardResized(int width, int height);
+    void onRunningChanged(bool running);
+
+private:
+    int boardWidth() const;
+    int boardHeight() const;
+
+    double cellPixels() const;
+    QPointF boardTopLeft() const;
+    double fitCellPixels() const;
+    bool cellFromPosition(const QPoint& position, int* row, int* col) const;
+    void clampPan();
+    void zoomBy(double factor);
+
+    void drawBoard(QPainter& painter,
+                   const domain::Grid& board,
+                   const QPointF& topLeft,
+                   double cellPixels,
+                   bool interactive) const;
+    void drawCellsDetailed(QPainter& painter,
+                           const domain::Grid& board,
+                           const QPointF& topLeft,
+                           double cellPixels,
+                           double gap,
+                           double radius,
+                           bool interactive) const;
+    void drawCellsAsImage(QPainter& painter,
+                          const domain::Grid& board,
+                          const QRectF& boardRect,
+                          bool interactive) const;
+    void updateGridPixmap(const QRectF& boardRect, double cellPixels) const;
+    void drawGridLines(QPainter& painter, const QRectF& boardRect, double cellPixels) const;
+
+    const model::LifeModel* m_model = nullptr;
+
+    QVector<QPoint> m_preview;
+    bool m_grid_visible = true;
+    bool m_animating = false;
+
+    mutable QImage m_cell_image;
+    mutable QPixmap m_grid_pixmap;
+    mutable QRectF m_grid_key;
+    mutable double m_grid_cell = 0.0;
+    mutable qreal m_grid_dpr = 0.0;
+
+    double m_cell_pixels = 8.0;
+    bool m_auto_fit = true;
+    QPointF m_pan;
+    int m_last_width = 0;
+    int m_last_height = 0;
+
+    int m_hover_row = -1;
+    int m_hover_col = -1;
+    bool m_left_pressed = false;
+    bool m_panning = false;
+    QPoint m_last_mouse;
+};
+
+} // namespace lifegame::view

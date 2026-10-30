@@ -1,0 +1,294 @@
+# 生命游戏 (life-game) —— Qt 5 / C++17 / 经典分层 MVC
+
+康威生命游戏（Conway's Game of Life）的桌面实现。项目使用 **C++17 + Qt 5 Widgets**，
+按**经典 MVC 的观察关系**组织：Model 广播状态，View 直接观察 Model 并只读访问，
+Controller 解释输入并调用 Model 的命令。
+
+它同时是一个**可执行的架构范例**：依赖方向由 CMake 目标和 `tools/check_layering.py`
+共同约束，Domain 层不依赖 Qt，Model 不碰文件/设置/对话框，View 不包含 Controller。
+
+![界面截图](docs/screenshot.png)
+
+## 为什么值得作为范例
+
+- **经典 MVC，而非"Controller 搬运一切"**：`BoardView` / `ControlPanel` 直接连接
+  `LifeModel` 的信号并读取 `const` 查询；Controller 不再把棋盘复制给 View。
+- **View 只读是编译期约束**：View 持有 `const model::LifeModel*`，任何写操作都会编译失败。
+- **Domain 零框架依赖**：`src/domain` 不包含任何 Qt 头文件，可用普通 `g++` 单独编译测试。
+- **可执行的架构门禁**：`tools/check_layering.py` 在 CTest 与 CI 中检查层间 include；
+  CMake 目标本身也按层拆分。
+- **并发与状态机可测试**：异步演化封装在 `SimulationEngine`，快照历史是纯 C++；
+  Model/View/Controller 各有 QtTest 覆盖。
+- **工程化齐全**：CMake presets、CTest、ASan/UBSan 选项、GitHub Actions、`.clang-format`、
+  README 与架构文档。
+
+## 功能
+
+- **直接绘制**：左键点击切换细胞，按住拖动可连续绘制或擦除；快速拖动自动补齐中间格子
+- **模拟控制**：开始 / 暂停、单步、随机填充、清空
+- **代数跳转**：按指定代数回退或快进；跳转不逐代刷新界面，回退基于快照重放
+- **可配置粒度**：跳转粒度、棋盘尺寸粒度、快照间隔，保存在 QSettings
+- **速度调节**：1 – 200 代/秒（对数刻度滑块；拖动时不会被回写"吸回"）
+- **并行演化**：QtConcurrent + QThreadPool 按行分块；计算不占用 UI 线程
+- **图案库**：13 种经典图案，选择后显示半透明预览，点击棋盘直接放置
+- **规则切换**：康威生命、高地生活、昼与夜、种子、迷宫；支持 RLE 头部自定义 B/S
+- **边界模式**：死亡边界与环绕边界
+- **棋盘尺寸**：20 × 20 至 400 × 400
+- **视图操作**：滚轮缩放（1 – 48 px/格）、中键/右键拖动平移、网格线开关
+- **文件**：打开 / 保存 RLE，导出 PNG 棋盘图片
+- **状态统计**：代数、存活细胞数、密度（Model 缓存人口，`stats()` O(1)）
+- **自动暂停**：手动编辑、清空、载入时自动暂停；检测到静物或空棋盘时停止并提示
+- **会话续接**：退出时保存棋盘、代数、规则、边界、速度、密度、网格与窗口位置
+
+## 操作
+
+| 操作 | 方式 |
+|---|---|
+| 绘制 / 擦除 | 左键点击；按住拖动连续绘制 |
+| 放置图案 | 在侧边「图案」中选择，点击棋盘 |
+| 平移 | 中键或右键拖动 |
+| 缩放 | 滚轮；或菜单「编辑 / 视图」中的缩放项 |
+| 开始 / 暂停 | 空格 / 工具栏按钮 / 侧边主按钮 |
+| 单步 | `F6` / 工具栏「单步」 |
+| 回退 / 快进 | 侧边「跳转」行填写代数后点「回退 / 快进」；或 `Ctrl+Shift+← / →` |
+| 设置 | `Ctrl+,` / 菜单「编辑 → 设置」 |
+| 随机填充 | `Ctrl+R` |
+| 清空 | `Ctrl+Delete` |
+| 载入示例 | `Ctrl+D` |
+| 打开 / 保存 RLE | `Ctrl+O` / `Ctrl+S` |
+| 导出 PNG | `Ctrl+Shift+S` |
+| 重置缩放 | `Ctrl+0` |
+| 显示 / 隐藏网格 | `Ctrl+G` |
+| 全屏 | `F11` |
+
+## 图案库
+
+| 分类 | 图案 |
+|---|---|
+| 静物 | 方块、蜂巢 |
+| 振荡器 | 闪烁灯、蟾蜍、信标、脉冲星、五连珠 |
+| 飞船 | 滑翔机、轻型飞船 |
+| 增长 | 高斯帕滑翔机炮 |
+| 长寿 | 橡果、R 五连体、死亡之翼 |
+
+图案形状写在 `src/domain/pattern_library.cpp`，只使用稳定 ID + ASCII 艺术；
+中文名称、分类与说明位于 `src/view/pattern_catalog.cpp`，两者通过 ID 关联。
+
+## 规则
+
+每个细胞只由周围 8 格中的存活数量决定。B/S 记号中，`B` 后是诞生所需的邻居数，
+`S` 后是存活所需的邻居数。
+
+| 名称 | 记号 | 备注 |
+|---|---|---|
+| 康威生命 | `B3/S23` | 默认规则 |
+| 高地生活 | `B36/S23` | 具有自我复制行为的著名变体 |
+| 昼与夜 | `B3678/S34678` | 对称性很强 |
+| 种子 | `B2/S` | 所有活细胞都会死亡，靠新细胞扩散 |
+| 迷宫 | `B3/S12345` | 容易生成迷宫状纹理 |
+
+## 架构
+
+完整契约见 **[docs/architecture.md](docs/architecture.md)**。
+
+### 分层
+
+```
+┌──────────────────────────── app ────────────────────────────┐
+│ main.cpp · MainWindow（组合根）· 菜单 / 工具栏 / 状态栏       │
+└───────┬───────────────┬───────────────┬───────────────┬──────┘
+        │               │               │               │
+     controller ───────┼───────► view  │               │
+        │               │               │               │
+        └───────────────┴──────► model ◄───────────────┘
+                                    │
+                                    ▼
+                                 domain
+        service ──► domain/model 的值对象（不反向依赖 view/controller）
+```
+
+| 层 | 目录 | 允许依赖 | 职责 |
+|---|---|---|---|
+| Domain | `src/domain` | 自身、C++ 标准库 | 棋盘、规则、图案、RLE、快照历史 |
+| Model | `src/model` | Domain、QtCore/QtConcurrent | 可观察状态、命令、异步演化 |
+| Service | `src/service` | Domain、Model 值对象、QtCore/QtGui | QSettings、文件、PNG 编码 |
+| View | `src/view` | Domain、Model（只读）、QtWidgets | 绘制、控件、观察 Model |
+| Controller | `src/controller` | Domain、Model、View、Service | 输入、定时器、对话框、会话恢复 |
+| App | `src/app` | 全部 | 组合根与入口 |
+
+### 经典 MVC 的数据流
+
+用户绘制：
+
+```
+BoardView::cellPressed(row, col)
+  → BoardController::onCellPressed
+  → LifeModel::toggleCell(row, col)          // 命令
+  → LifeModel 更新棋盘、人口、历史
+  → LifeModel::boardChanged / statusChanged  // 广播
+  → BoardView（观察者）update()
+  → ControlPanel（观察者）刷新统计
+```
+
+模拟定时器：
+
+```
+QTimer::timeout
+  → SimulationController::onTick
+  → LifeModel::requestStep()
+  → SimulationEngine 在 Qt 线程池按行并行计算
+  → QFutureWatcher::finished
+  → LifeModel::applyComputedStep()
+  → boardChanged / statusChanged
+  → View / ControlPanel 自行更新
+```
+
+Controller **不**搬运整块棋盘；View 直接读 `const domain::Grid&`，
+因此每帧没有 160 KB 的棋盘拷贝。
+
+### 目录
+
+```
+CMakeLists.txt                分层 CMake 目标
+CMakePresets.json             debug / release / asan 预设
+docs/architecture.md          架构契约与评审清单
+docs/performance.md           数据结构与并发性能报告
+src/domain/                   纯 C++，无 Qt
+src/model/                    可观察 Model + 异步管线
+src/service/                  QSettings / RLE 文件 / PNG
+src/view/                     自绘棋盘、面板、对话框、目录、主题
+src/controller/               输入与会话编排（按职责拆分）
+src/app/                      组合根与 main
+tests/                        domain / model / view / controller / ui
+tools/check_layering.py       层间 include 检查
+```
+
+### 关键约束
+
+- `BoardView` / `ControlPanel` 持有 `const LifeModel*`，只调用 const 查询、只连信号；
+- `LifeModel` 不包含 View/Controller/Service，也不出现 `QFile`、`QSettings`、`QFileDialog`
+  或中文用户文案；
+- Controller 是唯一同时持有可写 Model 与 View 的层；
+- Service 不依赖 View/Controller；
+- Domain 不包含 Qt；中文文案只出现在 View/Controller，并通过 `tr()` 提供翻译入口。
+
+## 构建
+
+需要 CMake ≥ 3.16、Ninja/Make、C++17 编译器与 Qt 5.9+（Widgets、Concurrent）；
+使用 `CMakePresets.json` 时需要 CMake ≥ 3.21：
+
+```bash
+sudo apt-get install -y cmake ninja-build g++ qtbase5-dev
+
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+./build/lifegame
+```
+
+如果系统同时安装了 Qt 6，CMake 可能优先找到 Qt 6；请显式指定 Qt 5：
+
+```bash
+cmake -S . -B build -G Ninja \
+  -DCMAKE_PREFIX_PATH=/usr/lib/aarch64-linux-gnu/cmake \
+  -DCMAKE_BUILD_TYPE=Release
+```
+
+或者使用预设：
+
+```bash
+cmake --preset debug
+cmake --build --preset debug
+ctest --preset debug
+```
+
+Qt Creator 可直接打开根目录的 `CMakeLists.txt`。本项目不再维护 qmake 工程。
+
+## 测试
+
+```bash
+cmake -S . -B build -G Ninja \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DLIFEGAME_WARNINGS_AS_ERRORS=ON
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
+
+六个 CTest 用例：
+
+| 用例 | 依赖 | 覆盖 |
+|---|---|---|
+| `domain_tests` | 无 Qt | 规则、Grid、边界、图案库、RLE（含恶意输入）、快照历史 |
+| `model_tests` | QtCore | 演化、异步步进、停表、规则/边界、RLE 载入、跳转/取消、跳转中拒绝载入 |
+| `view_tests` | QtWidgets | 速度刻度、滑块不回写、Model 观察、导出尺寸上限、目录、设置对话框 |
+| `controller_tests` | QtWidgets | Bresenham、绘制/图案、定时器、跳转进度、设置往返、会话恢复 |
+| `ui_tests` | QtWidgets | 完整 MainWindow 无头启动、开始模拟、清空、截图 |
+| `layering` | Python | 层间 include 契约 |
+
+UI 测试输出 `/tmp/lifegame-ui-tests.png`。CTest 为 UI 用例设置
+`QT_QPA_PLATFORM=offscreen`，无需 Xvfb（CI 也可以直接用 xvfb-run）。
+
+### 质量门禁
+
+- 编译开启 `-Wall -Wextra -Wpedantic`；`LIFEGAME_WARNINGS_AS_ERRORS=ON` 时视为错误。
+- `python3 tools/check_layering.py .` 检查所有 `src/` 的 include。
+- CI：普通构建 + ASan/UBSan 两个 job，均执行完整 CTest。
+- 新增源文件必须显式加入 `CMakeLists.txt`（禁止 glob），并放入正确的层目录。
+
+## 设计细节
+
+- **固定容量 Grid**：`std::array<Cell, 160000>`，每格 1 字节，行优先连续存储；
+  同尺寸 `resize()` 不清零，避免每代 160 KB memset。
+- **人口缓存**：Model 维护 `m_population`，`stats()` O(1)；View 不再逐帧扫描棋盘。
+- **异步演化**：`SimulationEngine` 用 `QtConcurrent::mapped` 按行切片，
+  `QFutureWatcher` 回 UI 线程；任务只读快照、只写自己的行区间。
+- **背压与失效**：上一代仍在计算时忽略新的定时器请求；编辑/暂停/规则变化调用
+  `discardPending()`，旧结果不会覆盖新状态。
+- **快照回退**：生命游戏多对一、不可逆，因此按间隔存快照并正向重放；
+  默认每 100 代一张，最多 64 张 + 锚点，约 10 MB。跳转在后台线程完成，
+  UI 不逐代刷新，进度通过 queued invocation 回到 UI 线程。
+- **View 无拷贝**：`BoardView` 直接读取 `const model->board()`；演化中把每格压成
+  一个像素后整块缩放贴图，暂停后恢复逐格矢量绘制。
+- **导出上限**：PNG 使用固定 8 px/格，并把单边限制在 4096 px；不会因为缩放到
+  48 px/格而申请约 1.4 GiB 的 QImage。
+- **滑块不回写**：`ControlPanel` 只在外部载入设置时 `setSpeed`；Controller 在拖动
+  过程中只重启定时器，不会把滑块"吸回"到近似位置。
+- **随机填充**：Model 用 `std::random_device` 生成种子，因此每次结果不同；
+  `Grid::randomize(density, seed)` 仍保留显式种子，便于测试。
+- **设置持久化**：`SettingsStore` 负责 QSettings 键；`SessionController` 负责启动恢复
+  与退出保存；密度、速度、网格、规则、边界、代数、窗口几何都会往返。
+- **错误分层**：Domain 用 `RleError` 枚举，Service 返回系统错误字符串，
+  Controller 映射为中文提示；Model 不产生用户文案。
+
+## 性能
+
+详见 **[docs/performance.md](docs/performance.md)**。历史测量（8 核 aarch64 / Qt 5.15）：
+
+| 项目 | 提升 |
+|---|---:|
+| `Grid` 串行演化 vs 旧 `LifeBoard` | 约 **6.8 – 7.9×** |
+| 400 × 400 并行计算 vs 新串行 | **2.53×** |
+| 400 × 400 异步管线 vs 旧同步 | 约 **19.7×** 吞吐 |
+| UI 线程每代阻塞（400 × 400） | 11.49 ms → **0.172 ms** |
+
+100 × 70 等小棋盘上并行派发开销大于收益，因此只在面积 ≥ 20,000 格时多分块；
+主要收益来自固定数组 Grid、人口缓存与异步解耦。
+
+## 已知限制
+
+- 棋盘为有限尺寸，最大 400 × 400；
+- 不提供撤销/重做；
+- 单步按钮在 UI 线程同步计算一代；连续模拟完全异步；
+- 并行计算使用 Qt 全局线程池，若应用其他部分占用大量池线程，模拟会自动排队；
+- 回退范围受快照间隔与 64 张上限约束；
+- 当前只提供中文文案；`tr()` 已就位，但未附带 `.ts` 翻译文件；
+- 文件对话框不记忆上次打开目录；
+- 未提供 `.desktop`/安装包集成，仅提供 CMake install 规则。
+
+## 第三方资源
+
+- 工具栏与按钮图标来自 [Lucide](https://lucide.dev)（ISC License），
+  许可证见 `resources/icons/LICENSE-lucide.txt`。
+
+## 许可
+
+MIT，见 [LICENSE](LICENSE)。

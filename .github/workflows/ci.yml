@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main, refactor/textbook-mvc]
+  pull_request:
+
+jobs:
+  build-and-test:
+    name: Build and test (Qt 5.15, GCC)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake ninja-build g++ python3 \
+            qtbase5-dev qtchooser qt5-qmake
+
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DLIFEGAME_BUILD_TESTS=ON
+          -DLIFEGAME_WARNINGS_AS_ERRORS=ON
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Architecture gate
+        run: python3 tools/check_layering.py .
+
+      - name: Tests
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Collect UI screenshot
+        if: always()
+        run: cp /tmp/lifegame-ui-tests.png build/ui-screenshot.png || true
+
+      - name: Upload UI screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-screenshot
+          path: build/ui-screenshot.png
+          if-no-files-found: ignore
+
+  sanitizers:
+    name: Sanitizers (ASan/UBSan)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake ninja-build g++ python3 \
+            qtbase5-dev qtchooser qt5-qmake
+
+      - name: Configure
+        run: >
+          cmake -S . -B build-asan -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DLIFEGAME_BUILD_TESTS=ON
+          -DLIFEGAME_WARNINGS_AS_ERRORS=ON
+          -DLIFEGAME_ENABLE_SANITIZERS=ON
+
+      - name: Build
+        run: cmake --build build-asan --parallel
+
+      - name: Sanitized tests
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+          UBSAN_OPTIONS: print_stacktrace=1
+        run: ctest --test-dir build-asan --output-on-failure

@@ -1,0 +1,47 @@
+# CMake / Ninja
+build/
+build-*/
+cmake-build-*/
+out/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+compile_commands.json
+CMakeUserPresets.json
+
+# Compiler / linker artifacts
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+*.exe
+
+# qmake legacy artifacts (kept ignored for old checkouts)
+Makefile
+Makefile.*
+.qmake.stash
+*.pro.user
+*.pro.user.*
+
+# Editor / IDE
+.qtcreator/
+.vscode/
+.idea/
+*.autosave
+*.swp
+*~
+
+# OS
+.DS_Store
+
+# Local exports / packages
+dist/
+*.run
+*.AppImage
+
+# File-system staging artifacts (agent environment)
+.l2s*
+.*.tmpdir/

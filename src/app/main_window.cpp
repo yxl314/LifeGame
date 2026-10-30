@@ -1,0 +1,358 @@
+#include "app/main_window.h"
+
+#include <QAction>
+#include <QActionGroup>
+#include <QApplication>
+#include <QCoreApplication>
+#include <QGuiApplication>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QMenu>
+#include <QMenuBar>
+#include <QMessageBox>
+#include <QScreen>
+#include <QScrollArea>
+#include <QSettings>
+#include <QStatusBar>
+#include <QToolBar>
+#include <QToolButton>
+#include <QWidget>
+
+#include <algorithm>
+
+#include "controller/board_controller.h"
+#include "controller/configuration_controller.h"
+#include "controller/file_controller.h"
+#include "controller/jump_controller.h"
+#include "controller/session_controller.h"
+#include "controller/simulation_controller.h"
+#include "model/life_model.h"
+#include "service/settings_store.h"
+#include "view/board_view.h"
+#include "view/control_panel.h"
+#include "view/jump_progress_dialog.h"
+#include "view/pattern_catalog.h"
+#include "view/rule_catalog.h"
+#include "view/status_bar_view.h"
+
+namespace lifegame::app
+{
+
+MainWindow::MainWindow(QWidget* parent)
+    : QMainWindow(parent)
+{
+    setWindowTitle(tr("生命游戏 · Conway's Game of Life"));
+    setMinimumSize(900, 620);
+
+    if (QScreen* screen = QGuiApplication::primaryScreen())
+    {
+        const QRect available = screen->availableGeometry();
+        resize(std::min(1180, available.width() - 60), std::min(820, available.height() - 60));
+    }
+    else
+    {
+        resize(1180, 820);
+    }
+
+    m_model = new model::LifeModel(this);
+    m_view = new view::BoardView(this);
+    m_panel = new view::ControlPanel(this);
+    setupCentralWidget();
+
+    m_ruleCatalog = new view::RuleCatalog(this);
+    m_patternCatalog = new view::PatternCatalog(this);
+
+    m_view->setModel(m_model);
+    m_panel->setRuleCatalog(m_ruleCatalog);
+    m_panel->setModel(m_model);
+
+    setupStatusBar();
+
+    auto settings = std::make_unique<QSettings>();
+    m_settingsStore = std::make_unique<service::SettingsStore>(std::move(settings));
+
+    m_boardController = new controller::BoardController(
+        m_model, m_view, m_panel, m_patternCatalog, m_statusBar, this);
+    m_simulationController = new controller::SimulationController(m_model, m_panel, m_statusBar, this);
+    m_jumpController = new controller::JumpController(
+        m_model,
+        m_panel,
+        m_statusBar,
+        [this] { return std::make_unique<view::JumpProgressDialog>(this); },
+        this);
+    m_fileController = new controller::FileController(m_model, m_view, m_statusBar, this, this);
+    m_configurationController = new controller::ConfigurationController(
+        m_model, m_panel, m_ruleCatalog, m_statusBar, this);
+    m_sessionController = new controller::SessionController(m_model,
+                                                            m_panel,
+                                                            m_simulationController,
+                                                            m_boardController,
+                                                            m_settingsStore.get(),
+                                                            this,
+                                                            m_statusBar,
+                                                            this);
+
+    setupMenus();
+    setupToolBar();
+
+    m_simulationController->setPlayPauseAction(m_playAction);
+    m_boardController->setGridAction(m_gridAction);
+    m_configurationController->setRuleActionGroup(m_ruleGroup);
+
+    const bool restored = m_sessionController->restore();
+    if (!restored)
+    {
+        m_boardController->loadDemo();
+    }
+
+    // Restore may have changed rule/boundary/grid/speed; resync the shell.
+    m_simulationController->setPlayPauseAction(m_playAction);
+    m_boardController->setGridAction(m_gridAction);
+    m_configurationController->setRuleActionGroup(m_ruleGroup);
+
+    connect(qApp, &QCoreApplication::aboutToQuit, m_sessionController, &controller::SessionController::save);
+    m_statusBar->showMessage(tr("就绪 · 左键绘制，中键拖动平移，滚轮缩放"), 0);
+}
+
+MainWindow::~MainWindow() = default;
+
+void MainWindow::setupCentralWidget()
+{
+    auto* central = new QWidget(this);
+    central->setObjectName(QStringLiteral("Central"));
+    auto* layout = new QHBoxLayout(central);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(0);
+    layout->addWidget(m_view, 1);
+
+    auto* sideScroll = new QScrollArea(this);
+    sideScroll->setObjectName(QStringLiteral("SideScroll"));
+    sideScroll->setWidgetResizable(true);
+    sideScroll->setFrameShape(QFrame::NoFrame);
+    sideScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    sideScroll->setWidget(m_panel);
+    sideScroll->setFixedWidth(302);
+    sideScroll->viewport()->setAutoFillBackground(false);
+    layout->addWidget(sideScroll, 0);
+    setCentralWidget(central);
+}
+
+void MainWindow::setupStatusBar()
+{
+    statusBar()->setSizeGripEnabled(true);
+    statusBar()->showMessage(tr("就绪"));
+    m_statusBar = new view::StatusBarView(statusBar(), this);
+
+    auto* hint = new QLabel(tr("空格 开始/暂停 · F6 单步 · 中键平移 / 滚轮缩放"), this);
+    hint->setObjectName(QStringLiteral("StatusHint"));
+    statusBar()->addPermanentWidget(hint);
+}
+
+void MainWindow::setupMenus()
+{
+    auto* fileMenu = menuBar()->addMenu(tr("文件(&F)"));
+    m_openAction = fileMenu->addAction(QIcon(QStringLiteral(":/icons/folder-open.svg")), tr("打开 RLE(&O)..."));
+    m_openAction->setShortcut(QKeySequence::Open);
+    m_openAction->setIconText(tr("打开"));
+    m_openAction->setStatusTip(tr("从 RLE 文件载入图案或棋盘"));
+    connect(m_openAction, &QAction::triggered, m_fileController, &controller::FileController::openRle);
+
+    m_saveAction = fileMenu->addAction(QIcon(QStringLiteral(":/icons/save.svg")), tr("保存为 RLE(&S)..."));
+    m_saveAction->setShortcut(QKeySequence::Save);
+    m_saveAction->setIconText(tr("保存"));
+    m_saveAction->setStatusTip(tr("把当前棋盘保存为 RLE 文件"));
+    connect(m_saveAction, &QAction::triggered, m_fileController, &controller::FileController::saveRle);
+
+    m_exportAction = fileMenu->addAction(QIcon(QStringLiteral(":/icons/image-down.svg")), tr("导出 PNG(&E)..."));
+    m_exportAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+S")));
+    m_exportAction->setIconText(tr("导出 PNG"));
+    m_exportAction->setStatusTip(tr("把当前棋盘导出为图片"));
+    connect(m_exportAction, &QAction::triggered, m_fileController, &controller::FileController::exportImage);
+
+    fileMenu->addSeparator();
+    QAction* quitAction = fileMenu->addAction(tr("退出(&Q)"));
+    quitAction->setShortcut(QKeySequence::Quit);
+    connect(quitAction, &QAction::triggered, qApp, &QApplication::quit);
+
+    auto* editMenu = menuBar()->addMenu(tr("编辑(&E)"));
+    QAction* demoAction = editMenu->addAction(tr("载入示例图案(&D)"));
+    demoAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+D")));
+    demoAction->setStatusTip(tr("载入高斯帕滑翔机炮或滑翔机"));
+    connect(demoAction, &QAction::triggered, m_boardController, &controller::BoardController::loadDemo);
+
+    m_randomAction = editMenu->addAction(QIcon(QStringLiteral(":/icons/dices.svg")), tr("随机填充(&R)"));
+    m_randomAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+R")));
+    m_randomAction->setIconText(tr("随机填充"));
+    m_randomAction->setStatusTip(tr("按侧边面板的密度随机撒点"));
+    connect(m_randomAction, &QAction::triggered, m_boardController, &controller::BoardController::randomizeBoard);
+
+    m_clearAction = editMenu->addAction(QIcon(QStringLiteral(":/icons/trash-2.svg")), tr("清空棋盘(&C)"));
+    m_clearAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Delete")));
+    m_clearAction->setIconText(tr("清空"));
+    m_clearAction->setStatusTip(tr("清空所有细胞"));
+    connect(m_clearAction, &QAction::triggered, m_boardController, &controller::BoardController::clearBoard);
+
+    editMenu->addSeparator();
+    m_zoomInAction = editMenu->addAction(QIcon(QStringLiteral(":/icons/zoom-in.svg")), tr("放大(&I)"));
+    m_zoomInAction->setShortcuts({QKeySequence(QStringLiteral("Ctrl+=")), QKeySequence(QStringLiteral("Ctrl++"))});
+    connect(m_zoomInAction, &QAction::triggered, m_view, &view::BoardView::zoomIn);
+
+    m_zoomOutAction = editMenu->addAction(QIcon(QStringLiteral(":/icons/zoom-out.svg")), tr("缩小(&O)"));
+    m_zoomOutAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+-")));
+    connect(m_zoomOutAction, &QAction::triggered, m_view, &view::BoardView::zoomOut);
+
+    m_resetZoomAction = editMenu->addAction(QIcon(QStringLiteral(":/icons/rotate-ccw.svg")), tr("重置缩放(&0)"));
+    m_resetZoomAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+0")));
+    connect(m_resetZoomAction, &QAction::triggered, m_view, &view::BoardView::resetZoom);
+
+    editMenu->addSeparator();
+    QAction* settingsAction = editMenu->addAction(QIcon(QStringLiteral(":/icons/settings.svg")), tr("设置(&S)…"));
+    settingsAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+,")));
+    settingsAction->setStatusTip(tr("调整跳转粒度、尺寸粒度与回退快照间隔"));
+    connect(settingsAction, &QAction::triggered, m_sessionController, &controller::SessionController::openSettings);
+
+    auto* simMenu = menuBar()->addMenu(tr("模拟(&S)"));
+    m_playAction = simMenu->addAction(QIcon(QStringLiteral(":/icons/play.svg")), tr("开始(&P)"));
+    m_playAction->setShortcut(QKeySequence(Qt::Key_Space));
+    m_playAction->setIconText(tr("开始"));
+    m_playAction->setStatusTip(tr("开始或暂停模拟"));
+    connect(m_playAction, &QAction::triggered, m_simulationController, &controller::SimulationController::toggleRunning);
+
+    m_stepAction = simMenu->addAction(QIcon(QStringLiteral(":/icons/step-forward.svg")), tr("单步(&N)"));
+    m_stepAction->setShortcut(QKeySequence(Qt::Key_F6));
+    m_stepAction->setIconText(tr("单步"));
+    m_stepAction->setStatusTip(tr("暂停并演化一代"));
+    connect(m_stepAction, &QAction::triggered, m_simulationController, &controller::SimulationController::stepOnce);
+
+    simMenu->addSeparator();
+    QAction* rewindAction = simMenu->addAction(QIcon(QStringLiteral(":/icons/rewind.svg")), tr("回退指定代数(&B)"));
+    rewindAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+Left")));
+    rewindAction->setStatusTip(tr("按侧边面板的代数回退，不逐代刷新界面"));
+    connect(rewindAction, &QAction::triggered, m_jumpController, &controller::JumpController::rewind);
+
+    QAction* forwardAction =
+        simMenu->addAction(QIcon(QStringLiteral(":/icons/fast-forward.svg")), tr("快进指定代数(&F)"));
+    forwardAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+Right")));
+    forwardAction->setStatusTip(tr("按侧边面板的代数快进，不逐代刷新界面"));
+    connect(forwardAction, &QAction::triggered, m_jumpController, &controller::JumpController::fastForward);
+
+    auto* ruleMenu = menuBar()->addMenu(tr("规则(&R)"));
+    m_ruleGroup = new QActionGroup(this);
+    m_ruleGroup->setExclusive(true);
+    for (const view::RulePresetView& preset : m_ruleCatalog->presets())
+    {
+        QAction* action = ruleMenu->addAction(preset.name);
+        action->setCheckable(true);
+        action->setData(preset.notation);
+        action->setStatusTip(tr("%1：B/S 记号 %2").arg(preset.name, preset.notation));
+        m_ruleGroup->addAction(action);
+        const QString notation = preset.notation;
+        connect(action, &QAction::triggered, this, [this, notation] {
+            m_configurationController->setRuleByNotation(notation);
+        });
+    }
+
+    auto* viewMenu = menuBar()->addMenu(tr("视图(&V)"));
+    m_gridAction = viewMenu->addAction(tr("显示网格线(&G)"));
+    m_gridAction->setCheckable(true);
+    m_gridAction->setChecked(m_boardController->gridVisible());
+    m_gridAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+G")));
+    connect(m_gridAction, &QAction::toggled, m_boardController, &controller::BoardController::setGridVisible);
+
+    QAction* fullscreenAction = viewMenu->addAction(tr("全屏(&F)"));
+    fullscreenAction->setShortcut(QKeySequence(Qt::Key_F11));
+    connect(fullscreenAction, &QAction::triggered, this, [this] {
+        if (isFullScreen())
+        {
+            showNormal();
+        }
+        else
+        {
+            showFullScreen();
+        }
+    });
+
+    auto* helpMenu = menuBar()->addMenu(tr("帮助(&H)"));
+    QAction* controls = helpMenu->addAction(tr("操作说明(&C)"));
+    controls->setShortcut(QKeySequence::HelpContents);
+    connect(controls, &QAction::triggered, this, &MainWindow::showControlsHelp);
+
+    QAction* about = helpMenu->addAction(tr("关于生命游戏(&A)"));
+    connect(about, &QAction::triggered, this, &MainWindow::showAbout);
+
+    QAction* aboutQt = helpMenu->addAction(tr("关于 Qt(&Q)"));
+    connect(aboutQt, &QAction::triggered, qApp, &QApplication::aboutQt);
+}
+
+void MainWindow::setupToolBar()
+{
+    auto* toolbar = addToolBar(tr("主工具栏"));
+    toolbar->setObjectName(QStringLiteral("MainToolBar"));
+    toolbar->setMovable(false);
+    toolbar->setFloatable(false);
+    toolbar->setIconSize(QSize(18, 18));
+    toolbar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+
+    toolbar->addAction(m_playAction);
+    toolbar->addAction(m_stepAction);
+    toolbar->addSeparator();
+    toolbar->addAction(m_randomAction);
+    toolbar->addAction(m_clearAction);
+    toolbar->addSeparator();
+    toolbar->addAction(m_openAction);
+    toolbar->addAction(m_saveAction);
+    toolbar->addAction(m_exportAction);
+    toolbar->addSeparator();
+    toolbar->addAction(m_zoomOutAction);
+    toolbar->addAction(m_zoomInAction);
+    toolbar->addAction(m_resetZoomAction);
+
+    for (QAction* action : {m_zoomOutAction, m_zoomInAction, m_resetZoomAction})
+    {
+        if (auto* button = qobject_cast<QToolButton*>(toolbar->widgetForAction(action)))
+        {
+            button->setToolButtonStyle(Qt::ToolButtonIconOnly);
+        }
+    }
+}
+
+void MainWindow::showControlsHelp()
+{
+    QMessageBox box(this);
+    box.setWindowTitle(tr("操作说明"));
+    box.setTextFormat(Qt::RichText);
+    box.setText(tr("<h3>操作说明</h3>"
+                   "<table cellspacing='6'>"
+                   "<tr><td><b>左键</b></td><td>切换细胞；按住拖动可连续绘制或擦除</td></tr>"
+                   "<tr><td><b>中键 / 右键拖动</b></td><td>平移棋盘</td></tr>"
+                   "<tr><td><b>滚轮</b></td><td>以鼠标位置为中心缩放</td></tr>"
+                   "<tr><td><b>空格</b></td><td>开始 / 暂停</td></tr>"
+                   "<tr><td><b>F6</b></td><td>单步演化一代</td></tr>"
+                   "<tr><td><b>Ctrl+Shift+← / →</b></td><td>按面板代数回退 / 快进</td></tr>"
+                   "<tr><td><b>Ctrl+R</b></td><td>随机填充</td></tr>"
+                   "<tr><td><b>Ctrl+D</b></td><td>载入示例图案</td></tr>"
+                   "<tr><td><b>Ctrl+0</b></td><td>重置缩放</td></tr>"
+                   "<tr><td><b>Ctrl+,</b></td><td>打开设置</td></tr>"
+                   "</table>"
+                   "<p>在侧边「图案」下拉框中选择图案后，鼠标会显示半透明预览，"
+                   "点击棋盘即可放置。选择「画笔」可回到直接绘制模式。</p>"));
+    box.exec();
+}
+
+void MainWindow::showAbout()
+{
+    QMessageBox::about(
+        this,
+        tr("关于 生命游戏"),
+        tr("<h3>生命游戏</h3>"
+           "<p>Conway's Game of Life，1970 年由 John Horton Conway 提出。</p>"
+           "<p>每个细胞的状态只由邻居数量决定：邻居恰为 3 个时诞生，"
+           "邻居为 2 或 3 个时存活，其余情况死亡。看似简单的规则可以产生"
+           "滑翔机、振荡器、甚至能自我复制的图案。</p>"
+           "<p>版本 %1<br>"
+           "技术：C++17 · Qt 5 · 经典分层 MVC<br>"
+           "Domain 层为纯 C++，可脱离 Qt 单独测试。</p>")
+            .arg(QCoreApplication::applicationVersion()));
+}
+
+} // namespace lifegame::app
