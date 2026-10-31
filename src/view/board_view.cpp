@@ -11,7 +11,7 @@
 #include <cmath>
 
 #include "domain/grid.h"
-#include "model/life_model.h"
+#include "domain/grid.h"
 
 namespace lifegame::view
 {
@@ -52,34 +52,40 @@ BoardView::BoardView(QWidget* parent)
     setToolTip(tr("左键绘制 / 擦除\n中键或右键拖动平移\n滚轮缩放"));
 }
 
-void BoardView::setModel(const model::LifeModel* model)
+void BoardView::setBoard(const domain::Grid* board)
 {
-    if (m_model == model)
+    if (m_board == board)
     {
+        m_board = board;
         return;
     }
 
-    if (m_model != nullptr)
+    m_board = board;
+    m_hover_row = -1;
+    m_hover_col = -1;
+    m_cell_pixels = fitCellPixels();
+    m_pan = QPointF();
+    update();
+}
+
+void BoardView::setPopulation(int population)
+{
+    m_population = std::max(0, population);
+    update();
+}
+
+void BoardView::setRunning(bool running)
+{
+    if (m_animating == running)
     {
-        disconnect(m_model, nullptr, this, nullptr);
+        return;
     }
+    m_animating = running;
+    update();
+}
 
-    m_model = model;
-    if (m_model != nullptr)
-    {
-        connect(m_model, &model::LifeModel::boardChanged, this, &BoardView::onBoardChanged);
-        connect(m_model, &model::LifeModel::boardResized, this, &BoardView::onBoardResized);
-        connect(m_model, &model::LifeModel::runningChanged, this, &BoardView::onRunningChanged);
-
-        m_animating = m_model->isRunning();
-        m_last_width = m_model->width();
-        m_last_height = m_model->height();
-        m_cell_pixels = fitCellPixels();
-        m_pan = QPointF();
-        m_hover_row = -1;
-        m_hover_col = -1;
-    }
-
+void BoardView::refresh()
+{
     update();
 }
 
@@ -135,12 +141,12 @@ void BoardView::resetZoom()
 
 int BoardView::boardWidth() const
 {
-    return m_model != nullptr ? m_model->width() : 0;
+    return m_board != nullptr ? m_board->width() : 0;
 }
 
 int BoardView::boardHeight() const
 {
-    return m_model != nullptr ? m_model->height() : 0;
+    return m_board != nullptr ? m_board->height() : 0;
 }
 
 double BoardView::cellPixels() const
@@ -504,14 +510,14 @@ void BoardView::paintEvent(QPaintEvent* event)
     painter.setRenderHint(QPainter::Antialiasing, true);
     painter.fillRect(rect(), kBackground);
 
-    if (m_model == nullptr || boardWidth() <= 0 || boardHeight() <= 0)
+    if (m_board == nullptr || boardWidth() <= 0 || boardHeight() <= 0)
     {
         return;
     }
 
-    drawBoard(painter, m_model->board(), boardTopLeft(), cellPixels(), true);
+    drawBoard(painter, *m_board, boardTopLeft(), cellPixels(), true);
 
-    if (m_model->stats().population == 0 && m_preview.isEmpty())
+    if (m_population == 0 && m_preview.isEmpty())
     {
         painter.setPen(kHint);
         QFont font = painter.font();
@@ -523,7 +529,7 @@ void BoardView::paintEvent(QPaintEvent* event)
 
 QImage BoardView::renderBoardImage() const
 {
-    if (m_model == nullptr || boardWidth() <= 0 || boardHeight() <= 0)
+    if (m_board == nullptr || boardWidth() <= 0 || boardHeight() <= 0)
     {
         return QImage();
     }
@@ -552,7 +558,7 @@ QImage BoardView::renderBoardImage() const
 
     QPainter painter(&image);
     painter.setRenderHint(QPainter::Antialiasing, true);
-    drawBoard(painter, m_model->board(), QPointF(kExportMargin, kExportMargin), static_cast<double>(pixels), false);
+    drawBoard(painter, *m_board, QPointF(kExportMargin, kExportMargin), static_cast<double>(pixels), false);
     painter.end();
     return image;
 }
@@ -713,56 +719,6 @@ void BoardView::leaveEvent(QEvent* event)
         update();
     }
     QWidget::leaveEvent(event);
-}
-
-void BoardView::onBoardChanged()
-{
-    if (m_model == nullptr)
-    {
-        return;
-    }
-
-    if (m_model->width() != m_last_width || m_model->height() != m_last_height)
-    {
-        m_last_width = m_model->width();
-        m_last_height = m_model->height();
-        m_hover_row = -1;
-        m_hover_col = -1;
-        if (m_auto_fit)
-        {
-            m_cell_pixels = fitCellPixels();
-            m_pan = QPointF();
-        }
-        else
-        {
-            clampPan();
-        }
-    }
-    update();
-}
-
-void BoardView::onBoardResized(int width, int height)
-{
-    m_last_width = width;
-    m_last_height = height;
-    m_hover_row = -1;
-    m_hover_col = -1;
-    if (m_auto_fit)
-    {
-        m_cell_pixels = fitCellPixels();
-        m_pan = QPointF();
-    }
-    else
-    {
-        clampPan();
-    }
-    update();
-}
-
-void BoardView::onRunningChanged(bool running)
-{
-    m_animating = running;
-    update();
 }
 
 } // namespace lifegame::view

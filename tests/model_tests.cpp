@@ -361,9 +361,9 @@ void ModelTests::snapshotInterval()
     QCOMPARE(model.snapshotInterval(), 50);
     VERIFY_FAIL(model.setSnapshotInterval(50));
     VERIFY_OK(model.setSnapshotInterval(1)); // clamped to the minimum
-    QCOMPARE(model.snapshotInterval(), lifegame::model::limits::kSnapshotIntervalMin);
+    QCOMPARE(model.snapshotInterval(), lifegame::shared::limits::kSnapshotIntervalMin);
     VERIFY_OK(model.setSnapshotInterval(5000)); // clamped to the maximum
-    QCOMPARE(model.snapshotInterval(), lifegame::model::limits::kSnapshotIntervalMax);
+    QCOMPARE(model.snapshotInterval(), lifegame::shared::limits::kSnapshotIntervalMax);
 }
 
 void ModelTests::commandResults()

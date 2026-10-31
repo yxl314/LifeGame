@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-namespace lifegame::model
+namespace lifegame::shared
 {
 
 /// Ranges shared by the settings dialog, the session store and validation.
@@ -31,9 +31,9 @@ struct AppSettings
     bool gridVisible = true;
 };
 
-inline AppSettings normalized(const AppSettings& settings)
+inline shared::AppSettings normalized(const shared::AppSettings& settings)
 {
-    AppSettings result = settings;
+    shared::AppSettings result = settings;
     result.jumpStep = std::clamp(result.jumpStep, limits::kJumpStepMin, limits::kJumpStepMax);
     result.sizeStep = std::clamp(result.sizeStep, limits::kSizeStepMin, limits::kSizeStepMax);
     result.snapshotInterval =
@@ -43,4 +43,4 @@ inline AppSettings normalized(const AppSettings& settings)
     return result;
 }
 
-} // namespace lifegame::model
+} // namespace lifegame::shared

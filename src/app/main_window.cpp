@@ -71,9 +71,7 @@ MainWindow::MainWindow(QWidget* parent, view::ConfirmSink* confirm)
     m_ruleCatalog = new view::RuleCatalog(this);
     m_patternCatalog = new view::PatternCatalog(this);
 
-    m_view->setModel(m_model);
     m_panel->setRuleCatalog(m_ruleCatalog);
-    m_panel->setModel(m_model);
 
     setupStatusBar();
 

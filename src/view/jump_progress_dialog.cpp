@@ -36,7 +36,7 @@ void JumpProgressDialog::setCancelHandler(std::function<void()> handler)
     m_cancelHandler = std::move(handler);
 }
 
-void JumpProgressDialog::show(const model::JumpInfo& info)
+void JumpProgressDialog::show(const shared::JumpInfo& info)
 {
     close();
 

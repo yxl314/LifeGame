@@ -19,8 +19,7 @@
 
 #include "domain/board_limits.h"
 #include "domain/rule.h"
-#include "model/app_settings.h"
-#include "model/life_model.h"
+#include "shared/app_settings.h"
 #include "view/rule_catalog.h"
 #include "view/speed_scale.h"
 #include "view/theme.h"
@@ -144,8 +143,8 @@ void ControlPanel::setupUi()
     m_randomButton->setAccessibleName(tr("随机填充棋盘"));
     m_randomButton->setToolTip(tr("按右侧密度随机撒点"));
     m_densitySpin = new QSpinBox(this);
-    m_densitySpin->setRange(model::limits::kDensityMin, model::limits::kDensityMax);
-    m_densitySpin->setValue(model::AppSettings{}.density);
+    m_densitySpin->setRange(shared::limits::kDensityMin, shared::limits::kDensityMax);
+    m_densitySpin->setValue(shared::AppSettings{}.density);
     m_densitySpin->setSuffix(tr(" %"));
     m_densitySpin->setFixedWidth(72);
     m_densitySpin->setAccessibleName(tr("随机填充密度"));
@@ -170,7 +169,7 @@ void ControlPanel::setupUi()
     m_speedSlider->setPageStep(10);
     m_speedSlider->setValue(sliderPositionForSpeed(m_speed));
     m_speedSlider->setAccessibleName(tr("模拟速度"));
-    m_speedSlider->setToolTip(tr("模拟速度：每秒演化代数（最高 %1）").arg(model::limits::kSpeedMax));
+    m_speedSlider->setToolTip(tr("模拟速度：每秒演化代数（最高 %1）").arg(shared::limits::kSpeedMax));
     m_speedValue = new QLabel(this);
     m_speedValue->setObjectName(QStringLiteral("ValueLabel"));
     m_speedValue->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
@@ -272,6 +271,7 @@ void ControlPanel::setupUi()
     auto* ruleLabel = new QLabel(tr("规则"), ruleGroup);
     ruleLabel->setObjectName(QStringLiteral("Muted"));
     m_ruleCombo = new QComboBox(ruleGroup);
+    m_ruleCombo->setObjectName(QStringLiteral("RuleCombo"));
     m_ruleCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     m_ruleCombo->setMinimumContentsLength(4);
     m_ruleCombo->setAccessibleName(tr("规则"));
@@ -290,6 +290,7 @@ void ControlPanel::setupUi()
     auto* boundaryLabel = new QLabel(tr("边界"), ruleGroup);
     boundaryLabel->setObjectName(QStringLiteral("Muted"));
     m_boundaryCombo = new QComboBox(ruleGroup);
+    m_boundaryCombo->setObjectName(QStringLiteral("BoundaryCombo"));
     m_boundaryCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     m_boundaryCombo->setMinimumContentsLength(4);
     m_boundaryCombo->setAccessibleName(tr("边界"));
@@ -352,35 +353,7 @@ void ControlPanel::setupUi()
 
     root->addStretch(1);
 
-    onRunningChanged(false);
-}
-
-void ControlPanel::setModel(const model::LifeModel* model)
-{
-    if (m_model == model)
-    {
-        return;
-    }
-
-    if (m_model != nullptr)
-    {
-        disconnect(m_model, nullptr, this, nullptr);
-    }
-
-    m_model = model;
-    if (m_model != nullptr)
-    {
-        connect(m_model, &model::LifeModel::statusChanged, this, &ControlPanel::onStatusChanged);
-        connect(m_model, &model::LifeModel::runningChanged, this, &ControlPanel::onRunningChanged);
-        connect(m_model, &model::LifeModel::boardResized, this, &ControlPanel::onBoardResized);
-        connect(m_model, &model::LifeModel::configurationChanged, this, &ControlPanel::onConfigurationChanged);
-
-        onStatusChanged(m_model->stats());
-        onRunningChanged(m_model->isRunning());
-        onBoardResized(m_model->width(), m_model->height());
-        syncRuleSelection();
-        syncBoundarySelection();
-    }
+    setRunning(false);
 }
 
 void ControlPanel::setRuleCatalog(const RuleCatalog* catalog)
@@ -409,7 +382,7 @@ void ControlPanel::setPatternDescription(const QString& text)
 
 void ControlPanel::setSpeed(int speed)
 {
-    const int value = std::clamp(speed, model::limits::kSpeedMin, model::limits::kSpeedMax);
+    const int value = std::clamp(speed, shared::limits::kSpeedMin, shared::limits::kSpeedMax);
     m_speed = value;
     {
         const QSignalBlocker blocker(m_speedSlider);
@@ -431,7 +404,7 @@ int ControlPanel::randomDensity() const
 void ControlPanel::setRandomDensity(int density)
 {
     const QSignalBlocker blocker(m_densitySpin);
-    m_densitySpin->setValue(std::clamp(density, model::limits::kDensityMin, model::limits::kDensityMax));
+    m_densitySpin->setValue(std::clamp(density, shared::limits::kDensityMin, shared::limits::kDensityMax));
 }
 
 bool ControlPanel::isGridVisible() const
@@ -472,20 +445,17 @@ void ControlPanel::setSizeStep(int step)
     m_heightSpin->setSingleStep(value);
 }
 
-void ControlPanel::onStatusChanged(const model::LifeStats& stats)
+void ControlPanel::setStats(const shared::LifeStats& stats)
 {
     m_currentGeneration = std::max(0, stats.generation);
     m_generationValue->setText(QLocale().toString(m_currentGeneration));
     m_populationValue->setText(QLocale().toString(std::max(0, stats.population)));
-    m_densityValue->setText(QStringLiteral("%1%").arg(QString::number(std::max(0.0, stats.density), 'f', 1)));
-    if (m_model != nullptr)
-    {
-        m_oldestGeneration = m_model->oldestGeneration();
-    }
+    m_densityValue->setText(
+        QStringLiteral("%1%").arg(QString::number(std::max(0.0, stats.density), 'f', 1)));
     updateJumpState();
 }
 
-void ControlPanel::onRunningChanged(bool running)
+void ControlPanel::setRunning(bool running)
 {
     m_playButton->setText(running ? tr("暂停") : tr("开始"));
     m_playButton->setIcon(QIcon(running ? QStringLiteral(":/icons/pause.svg")
@@ -493,7 +463,7 @@ void ControlPanel::onRunningChanged(bool running)
     m_playButton->setToolTip(running ? tr("暂停模拟（空格）") : tr("开始模拟（空格）"));
 }
 
-void ControlPanel::onBoardResized(int width, int height)
+void ControlPanel::setBoardSize(int width, int height)
 {
     const QSignalBlocker widthBlocker(m_widthSpin);
     const QSignalBlocker heightBlocker(m_heightSpin);
@@ -501,24 +471,45 @@ void ControlPanel::onBoardResized(int width, int height)
     m_heightSpin->setValue(std::clamp(height, m_heightSpin->minimum(), m_heightSpin->maximum()));
 }
 
-void ControlPanel::onConfigurationChanged()
+void ControlPanel::setRuleNotation(const QString& notation)
 {
+    m_ruleNotation = notation;
     syncRuleSelection();
+}
+
+void ControlPanel::setBoundaryIndex(int index)
+{
+    m_boundaryIndex = index == 1 ? 1 : 0;
     syncBoundarySelection();
+}
+
+void ControlPanel::setOldestGeneration(int generation)
+{
+    m_oldestGeneration = std::max(0, generation);
+    updateJumpState();
 }
 
 void ControlPanel::syncRuleSelection()
 {
-    if (m_model == nullptr || m_ruleCatalog == nullptr)
+    if (m_ruleCatalog == nullptr)
     {
         return;
     }
 
     QStringList names = m_ruleCatalog->names();
-    int index = m_ruleCatalog->indexOf(m_model->rule());
+    int index = -1;
+    const auto& presets = m_ruleCatalog->presets();
+    for (std::size_t i = 0; i < presets.size(); ++i)
+    {
+        if (presets[i].notation == m_ruleNotation)
+        {
+            index = static_cast<int>(i);
+            break;
+        }
+    }
     if (index < 0)
     {
-        names.append(tr("自定义 · %1").arg(QString::fromStdString(m_model->rule().notation())));
+        names.append(tr("自定义 · %1").arg(m_ruleNotation));
         index = names.size() - 1;
     }
 
@@ -534,19 +525,12 @@ void ControlPanel::syncRuleSelection()
 
 void ControlPanel::syncBoundarySelection()
 {
-    if (m_model == nullptr)
+    const QSignalBlocker blocker(m_boundaryCombo);
+    if (m_boundaryCombo->count() == 0)
     {
-        return;
-    }
-
-    m_syncing = true;
-    {
-        const QSignalBlocker blocker(m_boundaryCombo);
-        m_boundaryCombo->clear();
         m_boundaryCombo->addItems({tr("死亡边界"), tr("环绕边界")});
-        m_boundaryCombo->setCurrentIndex(m_model->boundary() == domain::Boundary::Wrap ? 1 : 0);
     }
-    m_syncing = false;
+    m_boundaryCombo->setCurrentIndex(m_boundaryIndex == 1 ? 1 : 0);
 }
 
 void ControlPanel::updateJumpState()

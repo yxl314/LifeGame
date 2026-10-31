@@ -74,20 +74,26 @@ target_compile_features(lifegame_domain PUBLIC cxx_std_17)
 # ---------------------------------------------------------------------------
 # Model: observable application state (QtCore + QtConcurrent, no UI).
 # ---------------------------------------------------------------------------
+add_library(lifegame_shared INTERFACE)
+target_sources(lifegame_shared INTERFACE
+    src/shared/life_stats.h
+    src/shared/app_settings.h
+    src/shared/jump_info.h
+)
+target_include_directories(lifegame_shared INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_features(lifegame_shared INTERFACE cxx_std_17)
+
 add_library(lifegame_model STATIC
     src/model/life_model.h
     src/model/life_model.cpp
     src/model/simulation_engine.h
     src/model/simulation_engine.cpp
-    src/model/app_settings.h
     src/model/model_log.h
     src/model/model_log.cpp
     src/model/command_result.h
-    src/model/jump_info.h
-    src/model/life_stats.h
     src/model/stall_reason.h
 )
-target_link_libraries(lifegame_model PUBLIC lifegame_domain Qt5::Core Qt5::Concurrent)
+target_link_libraries(lifegame_model PUBLIC lifegame_domain lifegame_shared Qt5::Core Qt5::Concurrent)
 target_include_directories(lifegame_model PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 lifegame_set_warnings(lifegame_model)
 target_compile_features(lifegame_model PUBLIC cxx_std_17)
@@ -123,7 +129,7 @@ add_library(lifegame_view STATIC
     src/view/speed_scale.cpp
     resources/resources.qrc
 )
-target_link_libraries(lifegame_view PUBLIC lifegame_model Qt5::Widgets)
+target_link_libraries(lifegame_view PUBLIC lifegame_domain lifegame_shared Qt5::Widgets)
 target_include_directories(lifegame_view PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 lifegame_set_warnings(lifegame_view)
 target_compile_features(lifegame_view PUBLIC cxx_std_17)
@@ -144,7 +150,7 @@ add_library(lifegame_service STATIC
     src/service/image_file_service.h
     src/service/image_file_service.cpp
 )
-target_link_libraries(lifegame_service PUBLIC lifegame_model Qt5::Core Qt5::Gui)
+target_link_libraries(lifegame_service PUBLIC lifegame_domain lifegame_shared Qt5::Core Qt5::Gui)
 target_include_directories(lifegame_service PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 lifegame_set_warnings(lifegame_service)
 target_compile_features(lifegame_service PUBLIC cxx_std_17)
@@ -172,7 +178,7 @@ add_library(lifegame_controller STATIC
     src/controller/session_controller.h
     src/controller/session_controller.cpp
 )
-target_link_libraries(lifegame_controller PUBLIC lifegame_model lifegame_view lifegame_service Qt5::Widgets)
+target_link_libraries(lifegame_controller PUBLIC lifegame_model lifegame_view lifegame_service lifegame_shared Qt5::Widgets)
 target_include_directories(lifegame_controller PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 lifegame_set_warnings(lifegame_controller)
 target_compile_features(lifegame_controller PUBLIC cxx_std_17)

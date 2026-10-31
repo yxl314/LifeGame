@@ -2,7 +2,7 @@
 
 #include <QObject>
 
-#include "model/app_settings.h"
+#include "shared/app_settings.h"
 #include "service/settings_error.h"
 
 class QMainWindow;
@@ -50,7 +50,7 @@ public:
 
     service::SettingsError save();
 
-    const model::AppSettings& settings() const;
+    const shared::AppSettings& settings() const;
 
 public slots:
     void openSettings();
@@ -65,7 +65,7 @@ private:
     service::SettingsStore* m_store = nullptr;
     QMainWindow* m_window = nullptr;
     view::MessageSink* m_messages = nullptr;
-    model::AppSettings m_settings;
+    shared::AppSettings m_settings;
 };
 
 } // namespace lifegame::controller

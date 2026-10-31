@@ -12,20 +12,15 @@ namespace lifegame::domain
 class Grid;
 }
 
-namespace lifegame::model
-{
-class LifeModel;
-}
-
 namespace lifegame::view
 {
 
 /**
  * Custom-painted board view.
  *
- * Classic MVC observation: the view holds a const model pointer, connects to
- * model signals and reads `model->board()` directly while painting. It never
- * copies the board and never calls a mutating model method.
+ * Layered MVC passive view: the controller pushes a `const domain::Grid*`
+ * plus a little render state. The view never includes or observes the Model,
+ * never copies the board and never calls a mutating model method.
  */
 class BoardView : public QWidget
 {
@@ -34,7 +29,12 @@ class BoardView : public QWidget
 public:
     explicit BoardView(QWidget* parent = nullptr);
 
-    void setModel(const model::LifeModel* model);
+    /// Passive-view API: the controller owns the model and pushes a read-only
+    /// board pointer plus the small amount of state this view renders.
+    void setBoard(const domain::Grid* board);
+    void setPopulation(int population);
+    void setRunning(bool running);
+    void refresh();
 
     QSize sizeHint() const override;
     QSize minimumSizeHint() const override;
@@ -62,11 +62,6 @@ protected:
     void mouseReleaseEvent(QMouseEvent* event) override;
     void wheelEvent(QWheelEvent* event) override;
     void leaveEvent(QEvent* event) override;
-
-private slots:
-    void onBoardChanged();
-    void onBoardResized(int width, int height);
-    void onRunningChanged(bool running);
 
 private:
     int boardWidth() const;
@@ -98,7 +93,8 @@ private:
     void updateGridPixmap(const QRectF& boardRect, double cellPixels) const;
     void drawGridLines(QPainter& painter, const QRectF& boardRect, double cellPixels) const;
 
-    const model::LifeModel* m_model = nullptr;
+    const domain::Grid* m_board = nullptr;
+    int m_population = 0;
 
     QVector<QPoint> m_preview;
     bool m_grid_visible = true;
@@ -113,8 +109,6 @@ private:
     double m_cell_pixels = 8.0;
     bool m_auto_fit = true;
     QPointF m_pan;
-    int m_last_width = 0;
-    int m_last_height = 0;
 
     int m_hover_row = -1;
     int m_hover_col = -1;

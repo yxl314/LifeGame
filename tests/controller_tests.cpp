@@ -2,6 +2,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QImage>
+#include <QLabel>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QtTest>
@@ -54,7 +55,7 @@ struct JumpState
     bool shown = false;
     bool closed = false;
     int progress = 0;
-    lifegame::model::JumpInfo info;
+    lifegame::shared::JumpInfo info;
     std::function<void()> cancel;
 };
 
@@ -66,7 +67,7 @@ public:
     {
     }
 
-    void show(const lifegame::model::JumpInfo& info) override
+    void show(const lifegame::shared::JumpInfo& info) override
     {
         m_state->shown = true;
         m_state->info = info;
@@ -148,16 +149,20 @@ void ControllerTests::boardControllerEditsAndStamps()
     lifegame::model::LifeModel model;
     VERIFY_OK(model.resizeBoard(20, 20));
     lifegame::view::BoardView view;
-    view.setModel(&model);
     lifegame::view::ControlPanel panel;
     lifegame::view::PatternCatalog catalog;
     FakeMessages messages;
 
     lifegame::controller::BoardController controller(&model, &view, &panel, &catalog, &messages, nullptr);
 
+    const auto statLabels = panel.findChildren<QLabel*>(QStringLiteral("StatValue"));
+    QCOMPARE(statLabels.size(), 3);
+    QVERIFY(!view.renderBoardImage().isNull()); // the controller pushed the board
+
     emit view.cellPressed(5, 5);
     QVERIFY(model.board().cell(5, 5));
     QCOMPARE(model.stats().population, 1);
+    QCOMPARE(statLabels[1]->text(), QStringLiteral("1")); // controller pushed stats to the view
 
     emit view.cellDragged(5, 10);
     for (int col = 5; col <= 10; ++col)
@@ -380,7 +385,8 @@ void ControllerTests::fileControllerPaths()
     lifegame::model::LifeModel model;
     VERIFY_OK(model.resizeBoard(20, 20));
     lifegame::view::BoardView view;
-    view.setModel(&model);
+    view.setBoard(&model.board());
+    view.setPopulation(model.stats().population);
     FakeMessages messages;
     lifegame::service::RleFileService rleService;
     lifegame::service::ImageFileService imageService;
@@ -445,8 +451,6 @@ void ControllerTests::sessionControllerRoundTrip()
         lifegame::view::BoardView view;
         lifegame::view::PatternCatalog catalog;
         FakeMessages messages;
-        panel.setModel(&model);
-        view.setModel(&model);
         lifegame::controller::BoardController board(&model, &view, &panel, &catalog, &messages, nullptr);
         lifegame::controller::SimulationController simulation(&model, &panel, &messages, nullptr);
 
@@ -469,8 +473,6 @@ void ControllerTests::sessionControllerRoundTrip()
         lifegame::view::BoardView view;
         lifegame::view::PatternCatalog catalog;
         FakeMessages messages;
-        panel.setModel(&model);
-        view.setModel(&model);
         lifegame::controller::BoardController board(&model, &view, &panel, &catalog, &messages, nullptr);
         lifegame::controller::SimulationController simulation(&model, &panel, &messages, nullptr);
 

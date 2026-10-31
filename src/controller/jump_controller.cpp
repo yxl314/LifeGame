@@ -84,7 +84,7 @@ void JumpController::jumpBy(int delta)
     }
 }
 
-void JumpController::onJumpStarted(const model::JumpInfo& info)
+void JumpController::onJumpStarted(const shared::JumpInfo& info)
 {
     if (!m_factory)
     {

@@ -1,8 +1,6 @@
 #pragma once
 
-#include <QMetaType>
-
-namespace lifegame::model
+namespace lifegame::shared
 {
 
 /// Parameters of a rewind/fast-forward operation.
@@ -13,6 +11,4 @@ struct JumpInfo
     int replayGenerations = 0;
 };
 
-} // namespace lifegame::model
-
-Q_DECLARE_METATYPE(lifegame::model::JumpInfo)
+} // namespace lifegame::shared

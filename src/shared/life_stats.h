@@ -1,8 +1,6 @@
 #pragma once
 
-#include <QMetaType>
-
-namespace lifegame::model
+namespace lifegame::shared
 {
 
 /// Immutable snapshot of the statistics shown by the view.
@@ -13,6 +11,4 @@ struct LifeStats
     double density = 0.0;
 };
 
-} // namespace lifegame::model
-
-Q_DECLARE_METATYPE(lifegame::model::LifeStats)
+} // namespace lifegame::shared

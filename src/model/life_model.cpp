@@ -36,9 +36,9 @@ LifeModel::LifeModel(QObject* parent)
       m_board(domain::kDefaultBoardWidth, domain::kDefaultBoardHeight),
       m_history(100)
 {
-    qRegisterMetaType<LifeStats>("lifegame::model::LifeStats");
+    qRegisterMetaType<shared::LifeStats>("lifegame::shared::LifeStats");
     qRegisterMetaType<StallReason>("lifegame::model::StallReason");
-    qRegisterMetaType<JumpInfo>("lifegame::model::JumpInfo");
+    qRegisterMetaType<shared::JumpInfo>("lifegame::shared::JumpInfo");
     qRegisterMetaType<CommandResult>("lifegame::model::CommandResult");
 
     connect(&m_engine, &SimulationEngine::stepReady, this, &LifeModel::onStepReady);
@@ -76,7 +76,7 @@ int LifeModel::height() const
     return m_board.height();
 }
 
-LifeStats LifeModel::stats() const
+shared::LifeStats LifeModel::stats() const
 {
     return computeStats();
 }
@@ -428,7 +428,7 @@ CommandResult LifeModel::setSnapshotInterval(int generations)
     }
 
     const int interval =
-        std::clamp(generations, limits::kSnapshotIntervalMin, limits::kSnapshotIntervalMax);
+        std::clamp(generations, shared::limits::kSnapshotIntervalMin, shared::limits::kSnapshotIntervalMax);
     if (interval == m_history.interval())
     {
         return CommandResult::NoChange;
@@ -761,7 +761,7 @@ CommandResult LifeModel::startJump(int targetGeneration)
         });
 
     m_jumpWatcher.setFuture(future);
-    emit jumpStarted(JumpInfo{m_generation, target, total});
+    emit jumpStarted(shared::JumpInfo{m_generation, target, total});
     return CommandResult::Success;
 }
 
@@ -858,11 +858,11 @@ void LifeModel::invalidateHistoryFrom(int generation)
     }
 }
 
-LifeStats LifeModel::computeStats() const
+shared::LifeStats LifeModel::computeStats() const
 {
     const int area = m_board.width() * m_board.height();
     const double raw = area > 0 ? 100.0 * static_cast<double>(m_population) / static_cast<double>(area) : 0.0;
-    return LifeStats{m_generation, m_population, std::round(raw * 10.0) / 10.0};
+    return shared::LifeStats{m_generation, m_population, std::round(raw * 10.0) / 10.0};
 }
 
 CommandResult LifeModel::replaceBoard(std::unique_ptr<domain::Grid> board, int generation)

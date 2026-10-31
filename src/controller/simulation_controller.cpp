@@ -8,7 +8,7 @@
 
 #include <algorithm>
 
-#include "model/app_settings.h"
+#include "shared/app_settings.h"
 #include "model/life_model.h"
 #include "view/control_panel.h"
 #include "view/interfaces.h"
@@ -50,7 +50,7 @@ SimulationController::SimulationController(model::LifeModel* model,
 {
     m_timer = new QTimer(this);
     m_timer->setTimerType(Qt::PreciseTimer);
-    m_speed = std::clamp(panel->speed(), model::limits::kSpeedMin, model::limits::kSpeedMax);
+    m_speed = std::clamp(panel->speed(), shared::limits::kSpeedMin, shared::limits::kSpeedMax);
 
     connect(m_timer, &QTimer::timeout, this, &SimulationController::onTick);
     connect(m_panel, &view::ControlPanel::playPauseRequested, this, &SimulationController::toggleRunning);
@@ -79,7 +79,7 @@ void SimulationController::setPlayPauseAction(QAction* action)
 
 void SimulationController::setSpeedExternal(int speed)
 {
-    m_speed = std::clamp(speed, model::limits::kSpeedMin, model::limits::kSpeedMax);
+    m_speed = std::clamp(speed, shared::limits::kSpeedMin, shared::limits::kSpeedMax);
     m_panel->setSpeed(m_speed);
     restartTimer();
 }
@@ -160,7 +160,7 @@ void SimulationController::onRunningChanged(bool running)
 
 void SimulationController::onSpeedChanged(int speed)
 {
-    m_speed = std::clamp(speed, model::limits::kSpeedMin, model::limits::kSpeedMax);
+    m_speed = std::clamp(speed, shared::limits::kSpeedMin, shared::limits::kSpeedMax);
     if (m_timer->isActive())
     {
         restartTimer();

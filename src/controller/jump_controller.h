@@ -40,7 +40,7 @@ public slots:
 
 private slots:
     void rewindBy(int generations);
-    void onJumpStarted(const lifegame::model::JumpInfo& info);
+    void onJumpStarted(const lifegame::shared::JumpInfo& info);
     void onJumpProgress(int done);
     void onJumpFinished(int generation);
     void onJumpCancelled();

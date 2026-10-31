@@ -5,7 +5,7 @@
 #include <functional>
 #include <memory>
 
-#include "model/jump_info.h"
+#include "shared/jump_info.h"
 
 namespace lifegame::view
 {
@@ -34,7 +34,7 @@ class JumpProgressView
 public:
     virtual ~JumpProgressView() = default;
 
-    virtual void show(const model::JumpInfo& info) = 0;
+    virtual void show(const shared::JumpInfo& info) = 0;
     virtual void setProgress(int done) = 0;
     virtual void close() = 0;
     virtual void setCancelHandler(std::function<void()> handler) = 0;

@@ -58,6 +58,7 @@ private slots:
 
 private:
     void paintLine(int fromRow, int fromCol, int toRow, int toCol, bool alive);
+    void syncViews();
     void applyStamp(int row, int col);
 
     model::LifeModel* m_model = nullptr;

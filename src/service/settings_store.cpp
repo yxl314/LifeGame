@@ -67,7 +67,7 @@ SettingsLoadResult SettingsStore::load() const
     state.settings.density = readInt("simulation/density", 30);
     state.settings.speed = readInt("simulation/speed", 10);
     state.settings.gridVisible = readBool("view/grid", true);
-    state.settings = model::normalized(state.settings);
+    state.settings = shared::normalized(state.settings);
 
     state.boardRle = m_settings->value(QStringLiteral("board/rle")).toString();
     state.ruleNotation =

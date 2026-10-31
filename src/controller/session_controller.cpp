@@ -38,7 +38,7 @@ SessionController::SessionController(model::LifeModel* model,
 {
 }
 
-const model::AppSettings& SessionController::settings() const
+const shared::AppSettings& SessionController::settings() const
 {
     return m_settings;
 }
@@ -47,7 +47,7 @@ bool SessionController::restore()
 {
     const service::SettingsLoadResult loadedState = m_store->load();
     const service::SessionState state = loadedState.state;
-    m_settings = model::normalized(state.settings);
+    m_settings = shared::normalized(state.settings);
 
     qCInfo(lcController) << "session restore start has_board=" << !state.boardRle.isEmpty()
                          << "generation=" << state.generation << "rule=" << state.ruleNotation
@@ -135,7 +135,7 @@ service::SettingsError SessionController::save()
     m_settings.density = m_panel->randomDensity();
     m_settings.speed = m_simulation->speed();
     m_settings.gridVisible = m_board->gridVisible();
-    m_settings = model::normalized(m_settings);
+    m_settings = shared::normalized(m_settings);
 
     service::SessionState state;
     state.settings = m_settings;
@@ -185,7 +185,7 @@ void SessionController::openSettings()
         return;
     }
 
-    m_settings = model::normalized(dialog.values());
+    m_settings = shared::normalized(dialog.values());
 
     applySettings();
     save();

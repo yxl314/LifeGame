@@ -23,14 +23,15 @@ import re
 import sys
 from pathlib import Path, PurePosixPath
 
-LAYERS = ("domain", "model", "service", "view", "controller", "app")
+LAYERS = ("domain", "shared", "model", "service", "view", "controller", "app")
 
 ALLOWED = {
     "domain": {"domain"},
-    "model": {"domain", "model"},
-    "service": {"domain", "model", "service"},
-    "view": {"domain", "model", "view"},
-    "controller": {"domain", "model", "service", "view", "controller"},
+    "shared": {"shared"},
+    "model": {"domain", "shared", "model"},
+    "service": {"domain", "shared", "service"},
+    "view": {"domain", "shared", "view"},
+    "controller": {"domain", "shared", "model", "service", "view", "controller"},
     "app": set(LAYERS),
 }
 
@@ -138,12 +139,12 @@ def main() -> int:
         sources.append(path)
         text = path.read_text(encoding="utf-8", errors="replace")
 
-        if layer in {"domain", "model"} and CJK_RE.search(text):
+        if layer in {"domain", "shared", "model"} and CJK_RE.search(text):
             problems.append(f"{path}: Chinese display text is forbidden in {layer}/")
 
         for lineno, line in enumerate(text.splitlines(), 1):
-            if layer == "domain" and QT_INCLUDE_RE.match(line):
-                problems.append(f"{path}:{lineno}: domain must not include Qt headers")
+            if layer in {"domain", "shared"} and QT_INCLUDE_RE.match(line):
+                problems.append(f"{path}:{lineno}: {layer} must not include Qt headers")
                 continue
             match = INCLUDE_RE.match(line)
             if not match:

@@ -1,21 +1,27 @@
-# 生命游戏 (life-game) —— Qt 5 / C++17 / 经典分层 MVC
+# 生命游戏 (life-game) —— Qt 5 / C++17 / 标准分层 MVC
 
 康威生命游戏（Conway's Game of Life）的桌面实现。项目使用 **C++17 + Qt 5 Widgets**，
-按**经典 MVC 的观察关系**组织：Model 广播状态，View 直接观察 Model 并只读访问，
-Controller 解释输入并调用 Model 的命令。
+按**标准分层 MVC（被动视图）**组织：
+
+- **Model** 只包含状态、规则和用例，不引用 View/Controller；
+- **View** 是纯被动视图：不包含 Model 头文件、不连 Model 信号，只接收 Controller
+  推送的只读数据和 `const domain::Grid*`，只发出用户意图；
+- **Controller** 是唯一同时持有 Model 与 View 的协调层，负责“查询 Model → 更新 View”
+  和“View 意图 → Model 命令”的双向转换。
 
 它同时是一个**可执行的架构范例**：依赖方向由分层 CMake 目标和
-`tools/check_layering.py` 共同约束（include 方向、`src/`/`..` 绕过、Domain/Model
-纯净度、CMake 源文件清单与目标链接方向），Domain 层不依赖 Qt，Model 不碰文件/设置/
-对话框，View 不包含 Controller。
+`tools/check_layering.py` 共同约束。Domain/Shared 层不依赖 Qt；Model/Service/View
+互不依赖，三者都只依赖 Domain + Shared 契约；Controller 依赖三者；App 只做组合。
 
 ![界面截图](docs/screenshot.png)
 
 ## 为什么值得作为范例
 
-- **经典 MVC，而非"Controller 搬运一切"**：`BoardView` / `ControlPanel` 直接连接
-  `LifeModel` 的信号并读取 `const` 查询；Controller 不再把棋盘复制给 View。
-- **View 只读是编译期约束**：View 持有 `const model::LifeModel*`，任何写操作都会编译失败。
+- **严格的 View→Model 隔离**：View 不包含 `model/` 任何头文件，只持有
+  `const domain::Grid*` 和 `domain::LifeStats` 等值对象；Model 变化由 Controller
+  连接信号后调用 View setter，View 自己不知道 Model 的存在。
+- **Controller 是唯一中介**：输入从 View 信号进入 Controller，状态从 Model 信号
+  经 Controller 推送回 View；没有 View→Model 的隐式观察链。
 - **Domain 零框架依赖**：`src/domain` 不包含任何 Qt 头文件，可用普通 `g++` 单独编译测试。
 - **可执行的架构门禁**：`tools/check_layering.py` 在 CTest 与 CI 中检查层间 include；
   CMake 目标本身也按层拆分。
@@ -98,34 +104,36 @@ Controller 解释输入并调用 Model 的命令。
 
 ## 架构
 
-完整契约见 **[docs/architecture.md](docs/architecture.md)**。
+完整契约见 **[docs/architecture.md](docs/architecture.md)**；
+独立审计（不引用文档作为证据）见 **[docs/architecture-audit.md](docs/architecture-audit.md)**。
 
 ### 分层
 
 ```
 ┌──────────────────────────── app ────────────────────────────┐
 │ main.cpp · MainWindow（组合根）· 菜单 / 工具栏 / 状态栏       │
-└───────┬───────────────┬───────────────┬───────────────┬──────┘
-        │               │               │               │
-     controller ───────┼───────► view  │               │
-        │               │               │               │
-        └───────────────┴──────► model ◄───────────────┘
-                                    │
-                                    ▼
-                                 domain
-        service ──► domain/model 的值对象（不反向依赖 view/controller）
+└───────────────────────────┬─────────────────────────────────┘
+                            ▼
+                       controller
+                      ╱    │    ╲
+                     ▼     ▼     ▼
+                  view  model  service
+                     ╲     │     ╱
+                      ╲    ▼    ╱
+                    domain  shared
 ```
 
 | 层 | 目录 | 允许依赖 | 职责 |
 |---|---|---|---|
-| Domain | `src/domain` | 自身、C++ 标准库 | 棋盘、规则、图案、RLE、快照历史 |
-| Model | `src/model` | Domain、QtCore/QtConcurrent | 可观察状态、命令、异步演化 |
-| Service | `src/service` | Domain、Model 值对象、QtCore/QtGui | QSettings、文件、PNG 编码 |
-| View | `src/view` | Domain、Model（只读）、QtWidgets | 绘制、控件、观察 Model |
-| Controller | `src/controller` | Domain、Model、View、Service | 输入、定时器、对话框、会话恢复 |
+| Domain | `src/domain` | 自身、C++ 标准库 | 棋盘、规则、图案、RLE、快照历史（纯业务） |
+| Shared | `src/shared` | 自身、C++ 标准库 | `LifeStats`/`AppSettings`/`JumpInfo` 只读契约值对象 |
+| Model | `src/model` | Domain、Shared、QtCore/QtConcurrent | 可观察状态、命令、异步演化；不引用 View/Controller |
+| Service | `src/service` | Domain、Shared、QtCore/QtGui | QSettings、文件、PNG 编码；不引用 Model |
+| View | `src/view` | Domain、Shared、QtWidgets | 被动绘制/控件；不引用 Model、Controller、Service |
+| Controller | `src/controller` | Domain、Shared、Model、View、Service | 输入、Model→View 推送、View→Model 命令、定时器/对话框 |
 | App | `src/app` | 全部 | 组合根与入口 |
 
-### 经典 MVC 的数据流
+### 分层 MVC 的数据流
 
 用户绘制：
 
@@ -135,8 +143,9 @@ BoardView::cellPressed(row, col)
   → LifeModel::setCell(row, col, !alive)    // 命令
   → LifeModel 更新棋盘、人口、历史
   → LifeModel::boardChanged / statusChanged  // 广播
-  → BoardView（观察者）update()
-  → ControlPanel（观察者）刷新统计
+  → BoardController 查询 Model
+  → BoardView::setBoard(const Grid*)         // 只传只读指针
+  → ControlPanel::setStats(LifeStats)        // 被动 setter
 ```
 
 模拟定时器：
@@ -149,11 +158,11 @@ QTimer::timeout
   → QFutureWatcher::finished
   → LifeModel::onStepReady() → applyStep()
   → boardChanged / statusChanged
-  → View / ControlPanel 自行更新
+  → BoardController 推送到 BoardView / ControlPanel
 ```
 
-Controller **不**搬运整块棋盘；View 直接读 `const domain::Grid&`，
-因此每帧没有 160 KB 的棋盘拷贝。
+Controller **不**复制整块棋盘；它把 `const domain::Grid*` 交给 View，
+因此每帧没有 160 KB 的棋盘拷贝，同时 View 也不知道 `LifeModel` 类型。
 
 ### 目录
 
@@ -162,7 +171,8 @@ CMakeLists.txt                分层 CMake 目标
 CMakePresets.json             debug / release / asan 预设
 docs/architecture.md          架构契约与评审清单
 docs/performance.md           数据结构与并发性能报告
-src/domain/                   纯 C++，无 Qt
+src/domain/                   纯业务 C++，无 Qt
+src/shared/                   跨层只读契约值对象（无 Qt、无行为）
 src/model/                    可观察 Model + CommandResult + 异步管线
 src/service/                  QSettings / RLE / PNG + FileError/SettingsError
 src/view/                     自绘棋盘、面板、对话框、确认/提示、目录、主题
@@ -175,13 +185,16 @@ tools/layering_selftest.py    门禁负向 fixture
 
 ### 关键约束
 
-- `BoardView` / `ControlPanel` 持有 `const LifeModel*`，只调用 const 查询、只连信号；
-- `LifeModel` 不包含 View/Controller/Service，也不出现 `QFile`、`QSettings`、`QFileDialog`
-  或中文用户文案；
+- `BoardView` / `ControlPanel` 不包含任何 `model/` 头文件，不持有 `LifeModel*`；
+  Controller 通过 `setBoard/setStats/setRunning/...` 推送显示状态。
 - Controller 是除 App 组合根之外，唯一同时持有可写 Model 与 View 的层；
-- Service 不依赖 View/Controller；
-- Domain 不包含 Qt；中文文案只出现在 View/Controller 和 App 外壳（菜单/标题/帮助），
-  Model/Domain 不出现中文，UI 文案通过 `tr()` 提供翻译入口。
+  View 的信号只连接到 Controller，Model 的信号也只由 Controller 消费。
+- `LifeModel` 不包含 View/Controller/Service，也不出现 `QFile`、`QSettings`、`QFileDialog`
+  或中文用户文案；Service 不依赖 Model/View/Controller。
+- Domain/Shared 不包含 Qt；`LifeStats`/`AppSettings`/`JumpInfo` 位于 Shared，
+  供 Model/Service/View/Controller 只读使用。
+- 中文文案只出现在 View/Controller 和 App 外壳（菜单/标题/帮助），Model/Domain 不出现中文，
+  UI 文案通过 `tr()` 提供翻译入口。
 
 ## 构建
 
@@ -193,7 +206,7 @@ tools/layering_selftest.py    门禁负向 fixture
 sudo apt-get install -y cmake ninja-build g++ python3 qtbase5-dev
 
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build
+cmake --build build --parallel 8
 ./build/lifegame
 ```
 
@@ -209,9 +222,13 @@ cmake -S . -B build -G Ninja \
 
 ```bash
 cmake --preset debug
-cmake --build --preset debug
+cmake --build --preset debug   # CMakePresets 中 jobs=8
 ctest --preset debug
 ```
+
+所有 build preset（`debug`/`release`/`asan`）都设置了 `"jobs": 8`，因此
+`cmake --build --preset <name>` 默认 8 路并行；非预设命令请使用
+`cmake --build build --parallel 8`。CI 也固定 `--parallel 8`。
 
 Qt Creator 可直接打开根目录的 `CMakeLists.txt`。本项目不再维护 qmake 工程。
 
@@ -234,7 +251,7 @@ Qt Creator 可直接打开根目录的 `CMakeLists.txt`。本项目不再维护 
 cmake -S . -B build -G Ninja \
   -DCMAKE_BUILD_TYPE=Debug \
   -DLIFEGAME_WARNINGS_AS_ERRORS=ON
-cmake --build build
+cmake --build build --parallel 8
 ctest --test-dir build --output-on-failure
 ```
 
@@ -244,8 +261,8 @@ ctest --test-dir build --output-on-failure
 |---|---|---|
 | `domain_tests` | 无 Qt | 规则、Grid、边界、图案库、RLE（含恶意输入、行/列诊断、缺少 `!`）、快照历史 |
 | `model_tests` | QtCore | 演化、异步步进、停表、规则/边界、RLE 载入、跳转/取消、跳转中拒绝载入、错误码 |
-| `view_tests` | QtWidgets | 速度刻度、滑块不回写、Model 观察、导出尺寸上限、目录、设置对话框、进度框关闭 |
-| `controller_tests` | QtWidgets | Bresenham、面板信号、绘制/图案、定时器、跳转方向/进度、文件路径、设置错误、会话恢复 |
+| `view_tests` | QtWidgets | 速度刻度、滑块不回写、被动 setter、导出尺寸上限、目录、设置对话框、进度框关闭 |
+| `controller_tests` | QtWidgets | Bresenham、面板信号、绘制/图案、定时器、跳转方向/进度、Model→View 推送、文件路径、设置错误、会话恢复 |
 | `ui_tests` | QtWidgets | 完整 MainWindow 无头启动、确认/取消、Space 焦点、网格同步、截图 |
 | `logging_tests` | QtCore | 文件 sink、category、verbose debug、轮转 |
 | `layering` | Python | include 方向、绕过、CJK、CMake 清单与目标链接 |
@@ -259,7 +276,8 @@ UI 测试输出 `/tmp/lifegame-ui-tests.png`。CTest 为 UI 用例设置
 - 编译开启 `-Wall -Wextra -Wpedantic`；`LIFEGAME_WARNINGS_AS_ERRORS=ON` 时视为错误；
   默认 `-fno-exceptions`，异常在编译期被拒绝。
 - `python3 tools/check_layering.py .` 检查 include 方向、`src/`/`..` 绕过、
-  Domain/Model 的 Qt/中文纯净度、`CMakeLists.txt` 源文件清单与 target 链接方向。
+  Domain/Shared/Model 的 Qt/中文纯净度、View/Service 的 Model 隔离、`CMakeLists.txt`
+  源文件清单与 target 链接方向。
 - `tools/layering_selftest.py` 用负向 fixture 验证门禁确实会失败。
 - CI：普通构建 + ASan/UBSan 两个 job，均执行完整 CTest。
 - 新增源文件必须显式加入 `CMakeLists.txt`（禁止 glob），并放入正确的层目录。
@@ -276,8 +294,8 @@ UI 测试输出 `/tmp/lifegame-ui-tests.png`。CTest 为 UI 用例设置
 - **快照回退**：生命游戏多对一、不可逆，因此按间隔存快照并正向重放；
   默认每 100 代一张，最多 64 张 + 锚点，约 10 MB。跳转在后台线程完成，
   UI 不逐代刷新，进度通过 queued invocation 回到 UI 线程。
-- **View 无拷贝**：`BoardView` 直接读取 `const model->board()`；演化中把每格压成
-  一个像素后整块缩放贴图，暂停后恢复逐格矢量绘制。
+- **View 无拷贝**：Controller 把 `const domain::Grid*` 传给 `BoardView`；演化中把每格
+  压成一个像素后整块缩放贴图，暂停后恢复逐格矢量绘制。
 - **导出上限**：PNG 使用固定 8 px/格，并把单边限制在 4096 px；不会因为缩放到
   48 px/格而申请约 1.4 GiB 的 QImage。
 - **滑块不回写**：`ControlPanel` 只在外部载入设置时 `setSpeed`；Controller 在拖动

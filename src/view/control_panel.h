@@ -4,7 +4,7 @@
 #include <QVector>
 #include <QWidget>
 
-#include "model/life_stats.h"
+#include "shared/life_stats.h"
 
 class QCheckBox;
 class QComboBox;
@@ -12,11 +12,6 @@ class QLabel;
 class QPushButton;
 class QSlider;
 class QSpinBox;
-
-namespace lifegame::model
-{
-class LifeModel;
-}
 
 namespace lifegame::view
 {
@@ -31,8 +26,8 @@ struct PatternOption
 };
 
 /**
- * Side panel: observes the model for statistics/configuration and emits
- * intents for the controllers. It never includes or mutates the model.
+ * Passive side panel: controllers push display state into it and it emits
+ * user intents. It has no model or controller dependency.
  */
 class ControlPanel : public QWidget
 {
@@ -41,8 +36,13 @@ class ControlPanel : public QWidget
 public:
     explicit ControlPanel(QWidget* parent = nullptr);
 
-    void setModel(const model::LifeModel* model);
     void setRuleCatalog(const RuleCatalog* catalog);
+    void setStats(const shared::LifeStats& stats);
+    void setRunning(bool running);
+    void setBoardSize(int width, int height);
+    void setRuleNotation(const QString& notation);
+    void setBoundaryIndex(int index);
+    void setOldestGeneration(int generation);
     void setPatternOptions(const QVector<PatternOption>& options);
     void setPatternDescription(const QString& text);
 
@@ -70,12 +70,6 @@ signals:
     void resizeRequested(int width, int height);
     void gridVisibilityChanged(bool visible);
 
-private slots:
-    void onStatusChanged(const model::LifeStats& stats);
-    void onRunningChanged(bool running);
-    void onBoardResized(int width, int height);
-    void onConfigurationChanged();
-
 private:
     void setupUi();
     void syncRuleSelection();
@@ -83,8 +77,9 @@ private:
     void updateJumpState();
     void updateSpeedLabel();
 
-    const model::LifeModel* m_model = nullptr;
     const RuleCatalog* m_ruleCatalog = nullptr;
+    QString m_ruleNotation = QStringLiteral("B3/S23");
+    int m_boundaryIndex = 0;
 
     QLabel* m_generationValue = nullptr;
     QLabel* m_populationValue = nullptr;

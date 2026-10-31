@@ -3,6 +3,7 @@
 #include <QDir>
 #include <QLabel>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QSettings>
 #include <QSpinBox>
 #include <QTemporaryDir>
@@ -208,6 +209,11 @@ void UiTests::gridActionMirrorsPanel()
     gridCheck->setChecked(!before);
     QTest::qWait(50);
     QCOMPARE(gridAction->isChecked(), !before);
+
+    auto* boundary = window.findChild<QComboBox*>(QStringLiteral("BoundaryCombo"));
+    QVERIFY(boundary != nullptr);
+    QCOMPARE(boundary->count(), 2);
+    QVERIFY(!boundary->currentText().isEmpty());
     window.close();
 }
 

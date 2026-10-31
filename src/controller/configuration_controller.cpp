@@ -22,10 +22,26 @@ ConfigurationController::ConfigurationController(model::LifeModel* model,
                                                  const view::RuleCatalog* catalog,
                                                  view::MessageSink* messages,
                                                  QObject* parent)
-    : QObject(parent), m_model(model), m_catalog(catalog), m_messages(messages)
+    : QObject(parent),
+      m_model(model),
+      m_panel(panel),
+      m_catalog(catalog),
+      m_messages(messages)
 {
     connect(panel, &view::ControlPanel::ruleChanged, this, &ConfigurationController::setRuleIndex);
     connect(panel, &view::ControlPanel::boundaryChanged, this, &ConfigurationController::setBoundaryIndex);
+    connect(m_model, &model::LifeModel::configurationChanged, this, &ConfigurationController::syncPanel);
+    syncPanel();
+}
+
+void ConfigurationController::syncPanel()
+{
+    if (m_panel == nullptr)
+    {
+        return;
+    }
+    m_panel->setRuleNotation(QString::fromStdString(m_model->rule().notation()));
+    m_panel->setBoundaryIndex(m_model->boundary() == domain::Boundary::Wrap ? 1 : 0);
 }
 
 void ConfigurationController::setRuleIndex(int index)

@@ -7,11 +7,8 @@
 #include <algorithm>
 #include <vector>
 
+#include "domain/grid.h"
 #include "domain/pattern_library.h"
-#include "model/life_model.h"
-
-#define VERIFY_OK(expression) QVERIFY(lifegame::model::succeeded(expression))
-#define VERIFY_FAIL(expression) QVERIFY(lifegame::model::failed(expression))
 #include "view/board_view.h"
 #include "view/jump_progress_dialog.h"
 #include "view/control_panel.h"
@@ -45,8 +42,8 @@ class ViewTests : public QObject
 private slots:
     void speedScale();
     void speedSliderDoesNotWriteBack();
-    void controlPanelObservesModel();
-    void boardViewObservesModelAndCapsExport();
+    void controlPanelDisplaysPushedState();
+    void boardViewRendersPushedStateAndCapsExport();
     void catalogs();
     void settingsDialogRoundTrip();
     void progressDialogProgrammaticCloseDoesNotCancel();
@@ -79,48 +76,49 @@ void ViewTests::speedSliderDoesNotWriteBack()
     QCOMPARE(panel.speed(), 2);
 }
 
-void ViewTests::controlPanelObservesModel()
+void ViewTests::controlPanelDisplaysPushedState()
 {
-    lifegame::model::LifeModel model;
-    VERIFY_OK(model.resizeBoard(20, 20));
-
     lifegame::view::ControlPanel panel;
     lifegame::view::RuleCatalog catalog;
     panel.setRuleCatalog(&catalog);
-    panel.setModel(&model);
+    panel.setBoardSize(20, 20);
 
     const auto labels = statLabels(panel);
     QCOMPARE(labels.size(), 3);
+    panel.setStats({0, 0, 0.0});
     QCOMPARE(labels[0]->text(), QStringLiteral("0"));
     QCOMPARE(labels[1]->text(), QStringLiteral("0"));
 
-    QVERIFY(model.setCell(5, 5, true));
+    panel.setStats({0, 1, 0.25});
     QCOMPARE(labels[0]->text(), QStringLiteral("0"));
     QCOMPARE(labels[1]->text(), QStringLiteral("1"));
     QCOMPARE(labels[2]->text(), QStringLiteral("0.3%"));
 
-    model.step();
+    panel.setStats({1, 0, 0.0});
     QCOMPARE(labels[0]->text(), QStringLiteral("1"));
     QCOMPARE(labels[1]->text(), QStringLiteral("0"));
 }
 
-void ViewTests::boardViewObservesModelAndCapsExport()
+void ViewTests::boardViewRendersPushedStateAndCapsExport()
 {
-    lifegame::model::LifeModel model;
-    VERIFY_OK(model.resizeBoard(20, 20));
+    lifegame::domain::Grid grid(20, 20);
+    grid.setCell(5, 5, true);
 
     lifegame::view::BoardView view;
-    view.setModel(&model);
+    view.setBoard(&grid);
+    view.setPopulation(grid.population());
     view.resize(640, 480);
-    QVERIFY(model.setCell(5, 5, true));
+    view.refresh();
 
     const QImage image = view.renderBoardImage();
     QVERIFY(!image.isNull());
     QVERIFY(image.width() > 0);
     QVERIFY(image.height() > 0);
 
-    VERIFY_OK(model.resizeBoard(400, 400));
-    QVERIFY(model.setCell(0, 0, true));
+    lifegame::domain::Grid largeGrid(400, 400);
+    largeGrid.setCell(0, 0, true);
+    view.setBoard(&largeGrid);
+    view.setPopulation(largeGrid.population());
     const QImage large = view.renderBoardImage();
     QVERIFY(!large.isNull());
     QVERIFY(large.width() <= 4096);
@@ -147,7 +145,7 @@ void ViewTests::catalogs()
 void ViewTests::settingsDialogRoundTrip()
 {
     lifegame::view::SettingsDialog dialog;
-    lifegame::model::AppSettings values;
+    lifegame::shared::AppSettings values;
     values.jumpStep = 500;
     values.sizeStep = 10;
     values.snapshotInterval = 250;
@@ -156,7 +154,7 @@ void ViewTests::settingsDialogRoundTrip()
     values.gridVisible = false;
     dialog.setValues(values);
 
-    const lifegame::model::AppSettings result = dialog.values();
+    const lifegame::shared::AppSettings result = dialog.values();
     QCOMPARE(result.jumpStep, 500);
     QCOMPARE(result.sizeStep, 10);
     QCOMPARE(result.snapshotInterval, 250);
@@ -173,7 +171,7 @@ void ViewTests::progressDialogProgrammaticCloseDoesNotCancel()
     lifegame::view::JumpProgressDialog dialog(&parent);
     dialog.setCancelHandler([&cancelled] { cancelled = true; });
 
-    lifegame::model::JumpInfo info;
+    lifegame::shared::JumpInfo info;
     info.fromGeneration = 0;
     info.toGeneration = 100;
     info.replayGenerations = 100;

@@ -105,7 +105,7 @@
 暂停后恢复逐格矢量绘制，圆角与格缝与之前一致。网格线另有一份位图缓存，
 只在棋盘矩形、格子尺寸或缩放比变化时重建。
 
-重构后 View 不再接收整块棋盘副本：`BoardView` 直接读取 `const LifeModel::board()`，
+重构后 View 不再接收整块棋盘副本：Controller 把 `const domain::Grid*` 交给 `BoardView`，
 因此每帧少一次 160 KB 的 `QVector` 拷贝。
 
 ## 6. 代数跳转：快照与重放

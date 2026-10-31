@@ -16,12 +16,15 @@
 #include "domain/pattern.h"
 #include "domain/rle.h"
 #include "domain/rule.h"
-#include "model/app_settings.h"
+#include "shared/app_settings.h"
 #include "model/command_result.h"
-#include "model/jump_info.h"
-#include "model/life_stats.h"
+#include "shared/jump_info.h"
+#include "shared/life_stats.h"
 #include "model/simulation_engine.h"
 #include "model/stall_reason.h"
+
+Q_DECLARE_METATYPE(lifegame::shared::LifeStats)
+Q_DECLARE_METATYPE(lifegame::shared::JumpInfo)
 
 namespace lifegame::model
 {
@@ -29,10 +32,10 @@ namespace lifegame::model
 /**
  * Observable application model for Conway's Game of Life.
  *
- * Classic MVC contract:
- *  - Model knows nothing about views or controllers.
- *  - State changes are broadcast as signals; views read state through const
- *    queries only.
+ * Layered MVC contract:
+ *  - Model knows nothing about views, services or controllers.
+ *  - State changes are broadcast as signals; Controllers subscribe and push
+ *    the resulting state into passive Views.
  *  - No file I/O, dialogs, QSettings or localized strings live here.
  *
  * All public methods run on the UI thread. The asynchronous step pipeline is
@@ -51,7 +54,7 @@ public:
     const domain::Grid& board() const;
     int width() const;
     int height() const;
-    LifeStats stats() const;
+    shared::LifeStats stats() const;
     const domain::Rule& rule() const;
     domain::Boundary boundary() const;
     bool isRunning() const;
@@ -99,13 +102,13 @@ public:
 signals:
     void boardChanged();
     void boardResized(int width, int height);
-    void statusChanged(const lifegame::model::LifeStats& stats);
+    void statusChanged(const lifegame::shared::LifeStats& stats);
     void runningChanged(bool running);
     void configurationChanged();
     void simulationStalled(lifegame::model::StallReason reason);
     void stepFailed(lifegame::model::CommandResult reason);
 
-    void jumpStarted(const lifegame::model::JumpInfo& info);
+    void jumpStarted(const lifegame::shared::JumpInfo& info);
     void jumpProgress(int done);
     void jumpFinished(int generation);
     void jumpCancelled();
@@ -131,7 +134,7 @@ private:
     void resetHistory();
     void recordSnapshot();
     void invalidateHistoryFrom(int generation);
-    LifeStats computeStats() const;
+    shared::LifeStats computeStats() const;
     void notifyBoardChanged();
     void notifyStatusChanged();
     void applyStep(domain::Grid&& next);

@@ -50,7 +50,41 @@ BoardController::BoardController(model::LifeModel* model,
     m_panel->setPatternOptions(options);
     selectPattern(-1);
 
+    connect(m_model, &model::LifeModel::boardChanged, this, [this] {
+        m_view->setBoard(&m_model->board());
+        m_view->setPopulation(m_model->stats().population);
+        m_view->refresh();
+    });
+    connect(m_model, &model::LifeModel::boardResized, this, [this](int width, int height) {
+        m_view->setBoard(&m_model->board());
+        m_panel->setBoardSize(width, height);
+    });
+    connect(m_model, &model::LifeModel::runningChanged, this, [this](bool running) {
+        m_view->setRunning(running);
+        m_panel->setRunning(running);
+    });
+    connect(m_model,
+            &model::LifeModel::statusChanged,
+            this,
+            [this](const shared::LifeStats& stats) {
+                m_view->setPopulation(stats.population);
+                m_panel->setStats(stats);
+                m_panel->setOldestGeneration(m_model->oldestGeneration());
+            });
+
     m_gridVisible = m_view->gridVisible();
+    syncViews();
+}
+
+void BoardController::syncViews()
+{
+    m_view->setBoard(&m_model->board());
+    m_view->setPopulation(m_model->stats().population);
+    m_view->setRunning(m_model->isRunning());
+    m_panel->setStats(m_model->stats());
+    m_panel->setOldestGeneration(m_model->oldestGeneration());
+    m_panel->setRunning(m_model->isRunning());
+    m_panel->setBoardSize(m_model->width(), m_model->height());
 }
 
 void BoardController::setGridAction(QAction* action)

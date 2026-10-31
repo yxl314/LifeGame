@@ -1,274 +1,251 @@
-# 架构说明：经典分层 MVC
+# 架构说明：标准分层 MVC（被动视图）
 
-本文档定义 life-game 的架构契约。所有代码、测试与评审都以本文为准。
-目标不是"看起来分层"，而是让依赖方向可以被机器检查、被编译器约束、被新人一眼看懂。
+本文档按**外部可验证的架构规则**描述 life-game，而不是反过来用代码给文档找理由。
+验收标准是：依赖图、CMake 目标、include 约束和测试行为共同成立；文档只是解释。
 
-## 1. 设计目标
+## 1. 采用的 MVC 变体
 
-1. **经典 MVC 的观察关系**：Model 不知道 View/Controller；View 直接观察 Model
-   并只读访问它；Controller 解释用户输入并调用 Model 的命令。
-2. **单向依赖**：`domain ← model ← view/controller ← app`，任何反向依赖都视为缺陷。
-3. **领域层零框架依赖**：`domain` 不包含任何 Qt 头文件，可用普通 C++ 编译器独立测试。
-4. **可测试性**：Model 不碰文件、不弹对话框、不拼接 UI 文案；Controller 对状态栏与
-   跳转进度使用窄接口（`MessageSink` / `JumpProgressView`），其余协作者保持具体类以避免
-   为小项目过度抽象；核心路径均有 QtTest/CTest。
-5. **可执行的质量门禁**：CMake 目标、`tools/check_layering.py`、CTest 与 CI 共同
-   防止架构腐化。
+MVC 有多个合法变体。本项目明确采用**分层 MVC + 被动视图（Passive View）**：
 
-## 2. 分层与依赖规则
+- **Model** 持有状态、规则和用例，通过信号广播变化，但不知道 View/Controller 的存在；
+- **View** 只负责绘制和控件，不读取 Model、不连接 Model 信号；它接收 Controller 推送的
+  只读数据和 `const domain::Grid*`，只发出用户意图信号；
+- **Controller** 是唯一同时持有 Model 与 View 的协调层，负责：
+  1. 把 View 的用户意图翻译成 Model 命令；
+  2. 订阅 Model 信号，把最新状态推送给 View；
+  3. 把错误码映射为用户提示，并记录低频日志。
 
-| 层 | 目录 | 可以依赖 | 禁止依赖 | 职责 |
+这不是“View 直接观察 Model”的经典 Observer MVC，而是分层架构中更严格的中介式 MVC。
+两种都叫 MVC，但本项目的验收按前者（View 不知道 Model）执行。
+
+## 2. 依赖规则
+
+```
+                    app
+                     │
+                     ▼
+                 controller
+                ╱     │      ╲
+               ▼      ▼       ▼
+             view   model   service
+               ╲      │      ╱
+                ╲     ▼     ╱
+              domain  shared
+```
+
+| 层 | 目录 | 允许依赖 | 禁止依赖 | 职责 |
 |---|---|---|---|---|
-| Domain | `src/domain` | 自身、C++ 标准库 | Qt、Model、View、Controller、Service、App | 实体、值对象、规则、棋盘、图案、RLE 编解码、快照历史 |
-| Model | `src/model` | Domain、QtCore/QtConcurrent、自身 | View、Controller、Service、App、文件/对话框/UI 文案 | 可观察的应用状态、命令、异步演化 |
-| Service | `src/service` | Domain、Model 的值对象、QtCore/QtGui、自身 | View、Controller、App | 文件读写、QSettings 持久化、图片编码等基础设施 |
-| View | `src/view` | Domain、Model（只读）、QtWidgets、自身 | Controller、Service、App | 绘制、控件、观察 Model、抛出用户输入信号 |
-| Controller | `src/controller` | Domain、Model、View、Service、自身 | App | 解释输入、调用 Model 命令、驱动定时器/对话框 |
-| App | `src/app` | 全部 | — | `main()`、组合根、菜单/工具栏装配 |
+| Domain | `src/domain` | 自身、C++ 标准库 | Qt、Shared、Model、Service、View、Controller、App | 棋盘、规则、图案、RLE、快照历史 |
+| Shared | `src/shared` | 自身、C++ 标准库 | Qt、Domain、Model、Service、View、Controller、App | `LifeStats`/`AppSettings`/`JumpInfo` 只读契约 |
+| Model | `src/model` | Domain、Shared、QtCore/QtConcurrent | Service、View、Controller、App | 可观察的应用状态、命令、异步演化 |
+| Service | `src/service` | Domain、Shared、QtCore/QtGui | Model、View、Controller、App | QSettings、RLE 文件、PNG 编码 |
+| View | `src/view` | Domain、Shared、QtWidgets | Model、Service、Controller、App | 被动绘制、控件、确认/进度接口 |
+| Controller | `src/controller` | Domain、Shared、Model、Service、View | App | 输入编排、Model→View 推送、错误文案、会话协调 |
+| App | `src/app` | 全部 | — | `main()`、组合根、菜单/工具栏/状态栏装配 |
 
-**依赖方向：**
+**CMake 目标必须与上表一致**：
 
 ```
-        ┌──────────────────────────── app ────────────────────────────┐
-        │  main.cpp · MainWindow（组合根）· 菜单/工具栏/状态栏          │
-        └───────┬───────────────┬───────────────┬───────────────┬──────┘
-                │               │               │               │
-             controller ───────┼───────► view  │               │
-                │               │               │               │
-                └───────────────┴──────► model ◄───────────────┘
-                                            │
-                                            ▼
-                                         domain
-        service ──► domain/model 的值对象（不反向依赖 view/controller）
+lifegame_domain      → 无业务目标依赖
+lifegame_shared      → header-only 契约，无业务目标依赖
+lifegame_model       → lifegame_domain + lifegame_shared + Qt5::Core + Qt5::Concurrent
+lifegame_service     → lifegame_domain + lifegame_shared + Qt5::Core + Qt5::Gui
+lifegame_view        → lifegame_domain + lifegame_shared + Qt5::Widgets
+lifegame_controller  → lifegame_model + lifegame_service + lifegame_view + lifegame_shared + Qt5::Widgets
+lifegame_app         → lifegame_controller
+lifegame             → lifegame_app
 ```
 
-更严格地说：
+`tools/check_layering.py` 会拒绝 View/Service 对 `model/` 的 include，也会检查
+`src/`/`..` 绕过、Domain/Model 的 Qt/中文污染、源文件是否列入 CMake、以及
+`target_link_libraries` 的方向。`layering_selftest` 用负向 fixture 证明门禁会失败，而不是
+只会在正确代码上打印 OK。
 
-- `domain` 不知道任何上层。
-- `model` 只认识 `domain` 和 QtCore/QtConcurrent。
-- `view` 可以包含 `model/life_model.h`，但只持有 `const LifeModel*`，只能调用 const 查询、
-  只能连接 Model 的信号；不得调用任何修改状态的方法。
-- `controller` 是除 App 组合根之外，唯一可以同时持有 `LifeModel*`（可写）和 View
-  指针的层；`MainWindow` 作为组合根持有它们用于注入。
-- `service` 不包含 UI 类型；文件/设置错误以 `FileError` / `SettingsError` 等类型化
-  结果返回，由 Controller 转成用户文案。
-- `app` 只做装配，不实现业务规则；菜单动作直接转发给 Controller 或纯 View 操作。
-  `MainWindow` 可以构造 `QSettings` 并注入 `SettingsStore`，但不读写具体配置键。
+## 3. 各层职责
 
-## 3. 经典 MVC 的职责边界
+### Domain
+
+- 纯 C++17，不包含任何 Qt 头文件；可脱离 Qt 单独编译测试。
+- `Grid`、`Rule`、`Pattern`、`PatternLibrary`、`Rle`、`History`、`Boundary`。
+- Domain 不产生中文文案，只返回 `RleError`/`RuleParseError` 等技术错误码。
+
+### Shared
+
+- 跨层只读契约：`shared::LifeStats`、`shared::AppSettings`、`shared::JumpInfo`。
+- 纯 C++，不依赖 Qt/Domain/其他层；只有值对象、范围常量和无副作用的规范化函数。
+- Model/Service/View/Controller 都可以依赖 Shared；Shared 不反向依赖任何层。
 
 ### Model
 
-- 持有棋盘、规则、边界、代数、运行状态、历史快照。
-- 提供 **只读查询** 与 **命令**。
-- 通过信号广播变化：`boardChanged`、`statusChanged`、`runningChanged`、
-  `configurationChanged`、`simulationStalled`、`jumpStarted/Progress/Finished/Cancelled`。
-- 不包含：`QFile`、`QFileDialog`、`QSettings`、中文提示、View/Controller 头文件、View 指针。
-- 单代异步计算封装在 `SimulationEngine` 中；代数跳转的重放任务在 `LifeModel` 内使用
-  `QtConcurrent::run`，Model 只负责状态与一致性。
+- `LifeModel` 是可观察的应用状态机：棋盘、规则、边界、代数、人口、快照历史、运行/跳转状态。
+- 对外只有两类接口：
+  - **只读查询**：`board()`、`stats()`、`rule()`、`boundary()`、`isRunning()` 等；
+  - **命令**：`setCell()`、`step()`、`loadDocument()`、`setRule()`、`startJump()` 等。
+- 命令失败返回 `CommandResult`，不弹窗、不拼接用户文案、不做文件 I/O。
+- 状态变化通过信号广播；**信号的下游消费者是 Controller，不是 View**。
+- 单代并行计算封装在 `SimulationEngine`；跳转重放使用 `QtConcurrent::run`，结果回 UI 线程。
+- Model 不 include `service/`、`view/`、`controller/`、`app/`。
+
+### Service
+
+- `SettingsStore`：QSettings 键、损坏值检测、保存状态。
+- `RleFileService`：文件读取/写入（`QSaveFile`）、8 MiB 上限、把字节交给 Domain RLE。
+- `ImageFileService`：`QImageWriter` PNG 导出与错误详情。
+- 错误返回 `FileError`/`SettingsError`；不弹对话框、不包含 Model 状态机。
+- Service 只 include Domain、Shared 和 QtCore/QtGui，不 include Model/View/Controller/App。
 
 ### View
 
-- 直接连接 Model 信号并读取 Model 的 const 查询（`board()`、`stats()`、`isRunning()` 等）。
-- 只负责"把 Model 画出来"和"把用户操作变成信号"。
-- View 自身可以拥有纯视图状态：缩放、平移、悬停、网格显隐、图案预览。
-- 不得调用 Model 的写方法，不得包含 Controller/Service/App 头文件。
-- 不复制整块棋盘：`BoardView` 直接读取 `const domain::Grid&`，避免每帧 160 KB 拷贝。
+- `BoardView`：自绘棋盘、缩放/平移、导出图像；通过
+  `setBoard(const domain::Grid*)`、`setPopulation(int)`、`setRunning(bool)`、`refresh()`
+  接收状态；不连接 Model 信号、不持有 `LifeModel*`。
+- `ControlPanel`：侧边面板；通过 `setStats()`、`setRunning()`、`setBoardSize()`、
+  `setRuleNotation()`、`setBoundaryIndex()`、`setOldestGeneration()` 接收显示状态；
+  只发出 `playPauseRequested`、`clearRequested`、`resizeRequested` 等意图信号。
+- `SettingsDialog`：只编辑 `domain::AppSettings` 的三个字段，并保留未编辑字段。
+- `JumpProgressDialog`：实现 `JumpProgressView`；程序化关闭时先断开取消回调，
+  避免 Controller/Model 销毁顺序造成的 use-after-free。
+- `MessageBoxConfirmSink`、`ConfirmSink`、`MessageSink`：Controller 可替换的输出接口。
+- View 不 include `model/`、`service/`、`controller/`、`app/`。
 
 ### Controller
 
-- 解释输入（鼠标、菜单、控件信号），调用 Model 命令。
-- 驱动 `QTimer`（模拟时钟）与对话框（文件、设置、跳转进度）。
-- 可以把瞬时 UI 状态喂给 View（例如图案预览、状态栏消息），但**不得搬运整块棋盘数据**。
-- 每个 Controller 只负责一类输入，避免"上帝控制器"。
-- 负责把 `CommandResult`/`FileError`/`SettingsError` 映射成一条可操作的用户提示，
-  并在失败/状态迁移处记录日志。
-- `FileController` 使用具体的 `RleFileService`/`ImageFileService`；它们由 App 注入，
-  使文件操作可替换、可测试。
+| Controller | 职责 |
+|---|---|
+| `BoardController` | 鼠标/图案输入、清空/随机/尺寸/网格；把 Model 的 board/status/running 推送给 `BoardView` 和 `ControlPanel` |
+| `SimulationController` | 播放/暂停/单步/速度、定时器、停滞与后台失败提示 |
+| `JumpController` | 回退/快进、进度视图、取消 |
+| `FileController` | 打开/保存 RLE、导出 PNG、错误弹窗 |
+| `ConfigurationController` | 规则/边界命令；把规则/边界推送给 `ControlPanel` 和菜单 ActionGroup |
+| `SessionController` | 启动恢复、设置应用、退出保存；设置/会话错误提示 |
+
+Controller 是唯一同时持有可写 `LifeModel*` 和具体 View 指针的层（App 组合根除外）。
+`MainWindow` 只创建对象、注入依赖、连接菜单；不直接调用 Model 命令。
 
 ### App
 
-- `MainWindow` 是组合根：创建 Model、View、Controller、Service，注入依赖，连接菜单。
-- 不包含演化规则、不直接读写 QSettings、不拼接业务状态。
-- 菜单动作要么转发给 Controller，要么调用 View 的纯视图操作（缩放、全屏、帮助）。
+- `main.cpp`：`QApplication`、`QCommandLineParser`、日志初始化/关闭、创建窗口、事件循环。
+- `MainWindow`：组合根；构造 Model/View/Service/Controller，连接菜单/工具栏/状态栏。
+- App 可以 include 全部层；它不实现演化规则，也不直接读写 QSettings 键。
 
-## 4. 目录结构
+## 4. 典型数据流
 
-```
-src/
-  domain/                 纯 C++，无 Qt
-    board_limits.h        棋盘尺寸/密度等共享常量
-    cell.h                Cell 类型与死活值
-    boundary.h            边界枚举
-    grid.h/.cpp           固定容量棋盘、串行/按行演化
-    rule.h/.cpp           B/S 规则、预设、解析
-    pattern.h/.cpp        图案实体
-    pattern_library.h/.cpp 内置图案（仅 ID + 形状，不含文案）
-    rle.h/.cpp            RLE 编解码（带边界检查与错误码）
-    history.h/.cpp        快照历史（纯 C++，可独立测试）
-  model/                  QtCore + QtConcurrent
-    life_stats.h          代数/人口/密度值对象
-    stall_reason.h        自动暂停原因（不含文案）
-    jump_info.h           跳转参数值对象
-    app_settings.h        应用设置值对象与范围
-    command_result.h      命令错误码
-    model_log.h/.cpp      lifegame.model category
-    simulation_engine.h/.cpp  异步一代演化管线
-    life_model.h/.cpp     可观察 Model
-  service/
-    settings_store.h/.cpp QSettings 持久化
-    settings_error.h      设置错误码
-    session_state.h       会话快照值对象
-    file_error.h          文件错误码
-    service_log.h/.cpp    lifegame.io category
-    rle_file_service.h/.cpp 文件读写 + Domain RLE 解码
-    image_file_service.h/.cpp PNG 保存
-  view/
-    interfaces.h          MessageSink / JumpProgressView / ConfirmSink 接口
-    message_box_confirm_sink.h/.cpp QMessageBox 确认实现
-    dialogs.h/.cpp        中文警告/信息对话框
-    theme.h/.cpp          Fusion 深色外观与图标
-    rule_catalog.h/.cpp   规则 ID → 中文显示名
-    pattern_catalog.h/.cpp 图案 ID → 名称/分类/说明
-    board_view.h/.cpp     自绘棋盘（观察 Model）
-    control_panel.h/.cpp  侧边面板（观察 Model）
-    settings_dialog.h/.cpp 设置对话框（纯视图）
-    jump_progress_dialog.h/.cpp 跳转进度对话框
-    status_bar_view.h/.cpp 状态栏消息适配器
-  controller/
-    controller_log.h/.cpp      lifegame.controller category
-    error_text.h/.cpp          错误码 → 中文提示
-    board_controller.h/.cpp    鼠标绘制、图案放置、清空/随机/示例
-    simulation_controller.h/.cpp 播放/暂停/单步/速度/定时器
-    jump_controller.h/.cpp     回退/快进与进度视图
-    file_controller.h/.cpp     打开/保存/导出
-    configuration_controller.h/.cpp 规则/边界/网格显隐
-    session_controller.h/.cpp  启动恢复、设置应用、退出保存
-    line_raster.h/.cpp         纯 C++ Bresenham（可独立测试）
-  app/
-    main_window.h/.cpp   组合根 + 菜单/工具栏
-    logging.h/.cpp       唯一 qInstallMessageHandler、轮转与过滤
-    main.cpp             入口 + QCommandLineParser
-tests/
-  domain_tests.cpp       纯 C++，无 Qt
-  model_tests.cpp        QtTest
-  view_tests.cpp         QtTest（offscreen）
-  controller_tests.cpp   QtTest（offscreen）
-  ui_tests.cpp           QtTest（offscreen/Xvfb）
-  logging_tests.cpp      文件 sink / category / 轮转
-tools/
-  check_layering.py      静态检查 include / 纯净度 / CMake 清单与链接
-  layering_selftest.py   架构门禁的负向 fixture
-```
-
-## 5. 典型数据流
-
-### 用户绘制
+### 用户绘制（View → Controller → Model）
 
 ```
 BoardView::cellPressed(row, col)
   → BoardController::onCellPressed
-  → LifeModel::setCell(row, col, !alive)     // 命令（画笔路径返回 bool）
-  → LifeModel 更新棋盘、人口、历史
-  → LifeModel::boardChanged / statusChanged  // 广播
-  → BoardView（观察者）update()
-  → ControlPanel（观察者）刷新统计
+  → LifeModel::setCell(row, col, !alive)
+  → LifeModel::boardChanged / statusChanged
+  → BoardController（订阅者）
+  → BoardView::setBoard(&model.board()) / setPopulation()
+  → ControlPanel::setStats(stats)
 ```
 
-注意：Controller **不**把棋盘数据复制给 View；View 直接读取 Model。
+View 不知道 `LifeModel`；它只收到 `const domain::Grid*` 和值对象。
 
-### 模拟定时器
+### 模拟定时器（Controller 驱动）
 
 ```
 QTimer::timeout
   → SimulationController::onTick
   → LifeModel::requestStep()
-  → SimulationEngine 在 Qt 线程池按行并行计算
+  → SimulationEngine（QtConcurrent::mapped，按行分块）
   → QFutureWatcher::finished
-  → LifeModel::onStepReady() → LifeModel::applyStep()
+  → LifeModel::onStepReady() → applyStep()
   → boardChanged / statusChanged
-  → View/ControlPanel 自行更新
+  → BoardController 查询 Model，推送到 BoardView / ControlPanel
 ```
 
-### 打开 RLE
+### 打开 RLE（Controller 协调）
 
 ```
 FileController::openRle()
-  → QFileDialog（输入）
-  → RleFileService::read()        // 文件 I/O
-  → domain::decodeRle()           // 纯 C++ 解析
-  → LifeModel::loadDocument()     // 应用状态
+  → QFileDialog（View 输入）
+  → RleFileService::read()          // Service，只依赖 Domain
+  → domain::decodeRle()             // Domain
+  → LifeModel::loadDocument()       // Model
   → boardChanged / configurationChanged / statusChanged
-  → View/ControlPanel 自行更新
+  → Controller 推送到 View
 ```
 
-## 6. 关键约定
+## 5. 状态所有权与“无棋盘拷贝”
 
-### 6.1 错误与文案
+- `LifeModel` 拥有 `std::unique_ptr<domain::Grid>` 棋盘对象；`board()` 返回 `const Grid&`。
+- Controller 在 `boardChanged`/`boardResized` 时把 `&model.board()` 作为 `const Grid*`
+  传给 `BoardView`；View 只在生命周期内读取该指针，不复制棋盘。
+- `BoardView` 通过 `refresh()` 重绘；`setBoard()` 只在棋盘对象/尺寸变化时重置缩放和平移。
+- `shared::LifeStats`、`shared::AppSettings` 是按值传递的小型值对象，允许拷贝。
+- 棋盘尺寸变化会替换 Model 的 `Grid` 对象；Controller 随后调用 `setBoard()` 更新指针。
+- Model 的 `stats()` 是 O(1) 缓存；View 不逐帧扫描棋盘。
 
-- 应用代码以 `-fno-exceptions` 编译；可恢复错误不使用异常。
-- Domain 返回 `RleError` / `RuleParseError` 等错误码/英文技术信息，不返回中文 UI 文案；
-  `Rule::parse` 返回 `RuleParseResult{error, rule}` 值对象。
-- Model 命令返回 `CommandResult`；`simulationStalled(StallReason)` 只发枚举。
-- Service 返回 `FileError` / `SettingsError`，系统详情只作为可选的补充字符串。
-- 中文文案只出现在 `view/`、`controller/` 与 App 外壳（菜单/标题/帮助），通过 `tr()`
-  提供翻译入口；Model/Domain 不出现中文。
-- `CommandResult` 的 `Clipped`/`Adjusted` 表示"已生效但有调整"；`Busy`/`NoHistory`/
-  `InvalidRule` 等区分用户可采取的不同动作，Controller 不再用一条模糊文案覆盖所有原因。
+## 6. 错误、日志与并发
 
-### 6.2 日志
+### 错误
+
+- 可恢复错误不使用异常；应用默认以 `-fno-exceptions` 编译。
+- Domain：`RleError`、`RuleParseError`（值返回 `RuleParseResult`）。
+- Model：`CommandResult`（`Success/Adjusted/Clipped/Busy/.../ComputationFailed`）。
+- Service：`FileError`、`SettingsError`，可附可选系统详情。
+- Controller：`error_text.h` 把错误码映射为一条中文提示；View 不处理技术错误码。
+- 分配失败/OOM 视为不可恢复（进程终止）；大缓冲区使用 `new (std::nothrow)` 的路径返回
+  `OutOfMemory`。
+
+### 日志
 
 - 五个 category：`lifegame.app`、`lifegame.model`、`lifegame.io`、
-  `lifegame.controller`、`lifegame.view`；定义分散在各层，`src/app/logging` 是唯一
-  安装 `qInstallMessageHandler` 的地方。
-- 默认文件 `QStandardPaths::AppLocalDataLocation/logs/life-game.log`，
-  2 MiB × 3 轮转；`--verbose` 打开 `lifegame.*.debug`，`--log-file` 覆盖路径。
-- 只记录低频状态迁移、文件/设置失败、模拟/跳转生命周期；**禁止**逐代、逐帧、逐格
-  或棋盘/RLE/窗口几何全文写入。
-- 日志消息为英文 ASCII，便于 grep 与附在 bug report 中；用户提示仍为中文。
+  `lifegame.controller`、`lifegame.view`。
+- `src/app/logging` 是唯一安装 `qInstallMessageHandler` 的地方；文件 sink 2 MiB × 3 轮转，
+  `--verbose` 开 `lifegame.*.debug`，`--log-file` 覆盖路径。
+- 只记录低频状态迁移、文件/设置失败、模拟/跳转生命周期；不记录每代、每帧、每格、
+  RLE/棋盘正文或窗口几何全文。
 - Domain 不引入 Qt 日志；RLE 错误在 Service/Controller 边界记录。
 
-### 6.3 并发
+### 并发
 
-- 只有 `SimulationEngine` 与 Model 的跳转任务使用线程池。
-- 后台任务只读快照、只写自己的输出缓冲区；UI 线程不等待计算（跳转的 `waitForFinished`
-  仅用于析构）。
-- 编辑/暂停/规则变化通过 `discardPending()` 使旧结果失效，不做跨线程共享写。
-- Model 的信号只在 UI 线程发出；后台进度用 `QMetaObject::invokeMethod(..., Qt::QueuedConnection)`。
+- `SimulationEngine` 是单代异步管线；`LifeModel` 的跳转重放使用 `QtConcurrent::run`。
+- 后台任务只读快照、只写自己的输出；UI 线程不等待计算（析构时的 `waitForFinished` 除外）。
+- 编辑/暂停/规则变化使旧结果失效；结果回到 UI 线程后才应用。
+- 跳转进度通过 queued invocation 回 UI 线程；取消使用原子标志。
 
-### 6.4 尺寸与性能
+## 7. 测试与门禁
 
-- 棋盘上限 400×400，`Cell` 为 1 字节，`std::array` 连续存储。
-- `Grid::resize()` 仅在尺寸变化时清零；同尺寸重复使用不 memset。
-- Model 缓存人口，`stats()` O(1)。
-- View 直接读 `const Grid&`，不逐帧复制。
-- 导出 PNG 使用独立、受限的分辨率（不跟随 1–48 px/格缩放）。
+### 测试
 
-### 6.5 View 只读约束
+| 用例 | 覆盖 |
+|---|---|
+| `domain_tests` | 规则、Grid、边界、图案、RLE 恶意输入/行诊断、History |
+| `model_tests` | 演化、异步步进、停表、规则/边界、RLE 载入、跳转/取消、错误码 |
+| `view_tests` | 被动 setter、速度滑块、导出上限、目录、设置对话框、进度框关闭 |
+| `controller_tests` | Model→View 推送、面板信号、绘制/图案、定时器、跳转、文件/设置、会话 |
+| `ui_tests` | 完整 MainWindow、确认/取消、Space 焦点、网格同步、截图 |
+| `logging_tests` | 文件 sink、category、verbose debug、轮转 |
+| `layering` | include 方向、View/Service↔Model 隔离、CJK/Qt 纯净度、CMake 清单/链接 |
+| `layering_selftest` | 门禁的负向 fixture |
 
-`BoardView` / `ControlPanel` 持有 `const model::LifeModel*`。C++ 的 const 限定会把
-"View 修改 Model"变成编译错误；这是本项目最重要的编译期约束。
+`view_tests` 的 CMake 目标只链接 `lifegame_view`/`lifegame_domain`；它使用
+`domain::Grid` 直接构造棋盘，不链接 Model，证明 View 可以脱离 Model 测试。
 
-## 7. 构建与门禁
+### 门禁
 
-- CMake 目标：`lifegame_domain`、`lifegame_model`、`lifegame_service`、`lifegame_view`、
-  `lifegame_controller`、`lifegame_app`、`lifegame`。
-- `tools/check_layering.py` 校验 include 方向、`src/`/`..` 绕过、Domain/Model 的
-  Qt/中文纯净度、`CMakeLists.txt` 源文件清单与 `target_link_libraries` 方向；
-  `ctest` 中的 `layering` 用例失败即视为架构破坏。
-- `tools/layering_selftest.py` 用负向 fixture 证明门禁能拒绝上述绕过；它也注册为 CTest。
-- CI 至少执行：配置、构建（`-Wall -Wextra -Wpedantic`、默认 `-fno-exceptions`）、
-  完整 `ctest`、无头 UI 测试。
-- 新增文件必须放入正确的层目录，并在 `CMakeLists.txt` 中显式列出（禁止 glob）。
+- `tools/check_layering.py`：include 方向、`src/`/`..`、View/Service 的 Model 隔离、
+  Domain/Model 的 Qt/中文、CMake 源文件清单与 target 链接方向。
+- `tools/layering_selftest.py`：对每个绕过/隔离规则构造负向 fixture。
+- CMake 目标按层拆分；`lifegame_view`/`lifegame_service` 只链接 `lifegame_domain`。
+- 新增文件必须放入正确层目录并显式加入 `CMakeLists.txt`（禁止 glob）。
 
-## 8. 评审清单
+## 8. 评审清单（按标准 MVC 验收）
 
-- [ ] 新增的 include 是否只指向本层或允许的下层？
-- [ ] View 是否只持有 `const LifeModel*`，且没有调用写方法？
-- [ ] Model 是否出现 `QFile`/`QSettings`/`QFileDialog`/中文文案/View 指针？
-- [ ] Controller 是否只做输入编排，没有把棋盘复制给 View？
-- [ ] Domain 是否仍然不包含任何 Qt 头文件？
-- [ ] 新增状态变化是否通过信号广播，而不是让上层轮询？
-- [ ] 可恢复失败是否返回错误码，而不是抛异常或只返回 bool？
-- [ ] 是否在低频、可行动的路径打日志，且没有逐代/逐格/正文日志？
-- [ ] 是否有对应的单元测试（Domain/Model）或 QtTest（View/Controller）？
+- [ ] View 是否包含任何 `model/` 头文件？应为否。
+- [ ] View 是否直接持有 `LifeModel*` 或连接 Model 信号？应为否。
+- [ ] View 是否只通过 Controller 调用的 setter 接收显示状态？应为是。
+- [ ] Service 是否包含 `model/` 头文件？应为否。
+- [ ] Model 是否包含 View/Controller/Service 头文件？应为否。
+- [ ] Controller 是否是唯一同时持有可写 Model 与 View 的层（App 组合根除外）？应为是。
+- [ ] Domain 是否仍然不包含任何 Qt 头文件/中文文案？应为是。
+- [ ] 用户输入是否只经 Controller 变成 Model 命令？应为是。
+- [ ] Model 变化是否只经 Controller 推送到 View？应为是。
+- [ ] CMake 目标链接是否与依赖表一致？`lifegame_view`/`lifegame_service` 是否只链接 Domain + Shared？
+- [ ] 新增状态变化是否有对应测试，尤其是 Model→View 推送和 View→Model 命令？
+- [ ] 可恢复错误是否返回错误码，而不是异常/静默 bool？
+- [ ] 是否只在低频、可行动路径记录日志，且没有逐代/逐格/正文日志？

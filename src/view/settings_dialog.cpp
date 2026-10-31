@@ -29,7 +29,7 @@ SettingsDialog::SettingsDialog(QWidget* parent)
 
     m_jumpStepSpin = new QSpinBox(this);
     m_jumpStepSpin->setObjectName(QStringLiteral("JumpStepSpin"));
-    m_jumpStepSpin->setRange(model::limits::kJumpStepMin, model::limits::kJumpStepMax);
+    m_jumpStepSpin->setRange(shared::limits::kJumpStepMin, shared::limits::kJumpStepMax);
     m_jumpStepSpin->setSingleStep(100);
     m_jumpStepSpin->setSuffix(tr(" 代"));
     m_jumpStepSpin->setFixedWidth(120);
@@ -39,7 +39,7 @@ SettingsDialog::SettingsDialog(QWidget* parent)
 
     m_sizeStepSpin = new QSpinBox(this);
     m_sizeStepSpin->setObjectName(QStringLiteral("SizeStepSpin"));
-    m_sizeStepSpin->setRange(model::limits::kSizeStepMin, model::limits::kSizeStepMax);
+    m_sizeStepSpin->setRange(shared::limits::kSizeStepMin, shared::limits::kSizeStepMax);
     m_sizeStepSpin->setSingleStep(5);
     m_sizeStepSpin->setSuffix(tr(" 格"));
     m_sizeStepSpin->setFixedWidth(120);
@@ -49,7 +49,7 @@ SettingsDialog::SettingsDialog(QWidget* parent)
 
     m_snapshotSpin = new QSpinBox(this);
     m_snapshotSpin->setObjectName(QStringLiteral("SnapshotSpin"));
-    m_snapshotSpin->setRange(model::limits::kSnapshotIntervalMin, model::limits::kSnapshotIntervalMax);
+    m_snapshotSpin->setRange(shared::limits::kSnapshotIntervalMin, shared::limits::kSnapshotIntervalMax);
     m_snapshotSpin->setSingleStep(50);
     m_snapshotSpin->setSuffix(tr(" 代"));
     m_snapshotSpin->setFixedWidth(120);
@@ -77,7 +77,7 @@ SettingsDialog::SettingsDialog(QWidget* parent)
     root->addWidget(buttons);
 }
 
-void SettingsDialog::setValues(const model::AppSettings& values)
+void SettingsDialog::setValues(const shared::AppSettings& values)
 {
     m_base = values;
     m_jumpStepSpin->setValue(values.jumpStep);
@@ -85,9 +85,9 @@ void SettingsDialog::setValues(const model::AppSettings& values)
     m_snapshotSpin->setValue(values.snapshotInterval);
 }
 
-model::AppSettings SettingsDialog::values() const
+shared::AppSettings SettingsDialog::values() const
 {
-    model::AppSettings result = m_base;
+    shared::AppSettings result = m_base;
     result.jumpStep = m_jumpStepSpin->value();
     result.sizeStep = m_sizeStepSpin->value();
     result.snapshotInterval = m_snapshotSpin->value();

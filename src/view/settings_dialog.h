@@ -2,7 +2,7 @@
 
 #include <QDialog>
 
-#include "model/app_settings.h"
+#include "shared/app_settings.h"
 
 class QSpinBox;
 
@@ -17,14 +17,14 @@ class SettingsDialog : public QDialog
 public:
     explicit SettingsDialog(QWidget* parent = nullptr);
 
-    void setValues(const model::AppSettings& values);
-    model::AppSettings values() const;
+    void setValues(const shared::AppSettings& values);
+    shared::AppSettings values() const;
 
 private:
     QSpinBox* m_jumpStepSpin = nullptr;
     QSpinBox* m_sizeStepSpin = nullptr;
     QSpinBox* m_snapshotSpin = nullptr;
-    model::AppSettings m_base;
+    shared::AppSettings m_base;
 };
 
 } // namespace lifegame::view

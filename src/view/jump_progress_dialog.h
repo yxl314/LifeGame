@@ -20,7 +20,7 @@ public:
     explicit JumpProgressDialog(QWidget* parent);
     ~JumpProgressDialog() override;
 
-    void show(const model::JumpInfo& info) override;
+    void show(const shared::JumpInfo& info) override;
     void setProgress(int done) override;
     void close() override;
     void setCancelHandler(std::function<void()> handler) override;

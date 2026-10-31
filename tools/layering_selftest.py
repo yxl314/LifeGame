@@ -77,6 +77,27 @@ def main() -> int:
         False,
     )
     ok &= expect(
+        "view model dependency",
+        {
+            "src/view/view.h": '#include "model/life_stats.h"\n',
+            "src/model/life_stats.h": "#pragma once\n",
+        },
+        False,
+    )
+    ok &= expect(
+        "service model dependency",
+        {
+            "src/service/service.h": '#include "model/life_stats.h"\n',
+            "src/model/life_stats.h": "#pragma once\n",
+        },
+        False,
+    )
+    ok &= expect(
+        "shared Qt dependency",
+        {"src/shared/value.h": "#include <QString>\n"},
+        False,
+    )
+    ok &= expect(
         "model QFile",
         {"src/model/model.h": "#include <QFile>\n"},
         False,
