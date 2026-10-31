@@ -5,7 +5,13 @@
 #include <QApplication>
 #include <QCoreApplication>
 #include <QGuiApplication>
+#include <QAbstractButton>
+#include <QComboBox>
 #include <QHBoxLayout>
+#include <QKeyEvent>
+#include <QLineEdit>
+#include <QSlider>
+#include <QSpinBox>
 #include <QLabel>
 #include <QMenu>
 #include <QMenuBar>
@@ -27,10 +33,13 @@
 #include "controller/session_controller.h"
 #include "controller/simulation_controller.h"
 #include "model/life_model.h"
+#include "service/image_file_service.h"
+#include "service/rle_file_service.h"
 #include "service/settings_store.h"
 #include "view/board_view.h"
 #include "view/control_panel.h"
 #include "view/jump_progress_dialog.h"
+#include "view/message_box_confirm_sink.h"
 #include "view/pattern_catalog.h"
 #include "view/rule_catalog.h"
 #include "view/status_bar_view.h"
@@ -38,10 +47,10 @@
 namespace lifegame::app
 {
 
-MainWindow::MainWindow(QWidget* parent)
+MainWindow::MainWindow(QWidget* parent, view::ConfirmSink* confirm)
     : QMainWindow(parent)
 {
-    setWindowTitle(tr("生命游戏 · Conway's Game of Life"));
+    setWindowTitle(tr("生命游戏"));
     setMinimumSize(900, 620);
 
     if (QScreen* screen = QGuiApplication::primaryScreen())
@@ -70,9 +79,20 @@ MainWindow::MainWindow(QWidget* parent)
 
     auto settings = std::make_unique<QSettings>();
     m_settingsStore = std::make_unique<service::SettingsStore>(std::move(settings));
+    m_rleService = std::make_unique<service::RleFileService>();
+    m_imageService = std::make_unique<service::ImageFileService>();
+    if (confirm != nullptr)
+    {
+        m_confirm = confirm;
+    }
+    else
+    {
+        m_defaultConfirm = std::make_unique<view::MessageBoxConfirmSink>(this);
+        m_confirm = m_defaultConfirm.get();
+    }
 
     m_boardController = new controller::BoardController(
-        m_model, m_view, m_panel, m_patternCatalog, m_statusBar, this);
+        m_model, m_view, m_panel, m_patternCatalog, m_statusBar, m_confirm, this);
     m_simulationController = new controller::SimulationController(m_model, m_panel, m_statusBar, this);
     m_jumpController = new controller::JumpController(
         m_model,
@@ -80,7 +100,8 @@ MainWindow::MainWindow(QWidget* parent)
         m_statusBar,
         [this] { return std::make_unique<view::JumpProgressDialog>(this); },
         this);
-    m_fileController = new controller::FileController(m_model, m_view, m_statusBar, this, this);
+    m_fileController = new controller::FileController(
+        m_model, m_view, m_statusBar, this, m_rleService.get(), m_imageService.get(), this);
     m_configurationController = new controller::ConfigurationController(
         m_model, m_panel, m_ruleCatalog, m_statusBar, this);
     m_sessionController = new controller::SessionController(m_model,
@@ -110,11 +131,48 @@ MainWindow::MainWindow(QWidget* parent)
     m_boardController->setGridAction(m_gridAction);
     m_configurationController->setRuleActionGroup(m_ruleGroup);
 
-    connect(qApp, &QCoreApplication::aboutToQuit, m_sessionController, &controller::SessionController::save);
+    connect(qApp, &QCoreApplication::aboutToQuit, this, [this] { (void)m_sessionController->save(); });
     m_statusBar->showMessage(tr("就绪 · 左键绘制，中键拖动平移，滚轮缩放"), 0);
 }
 
-MainWindow::~MainWindow() = default;
+MainWindow::~MainWindow()
+{
+    // Controllers hold model/view pointers. Destroy them explicitly before
+    // the QObject child list deletes the model/views, so a future controller
+    // destructor can never observe a half-destroyed model.
+    delete m_sessionController;
+    m_sessionController = nullptr;
+    delete m_configurationController;
+    m_configurationController = nullptr;
+    delete m_fileController;
+    m_fileController = nullptr;
+    delete m_jumpController;
+    m_jumpController = nullptr;
+    delete m_simulationController;
+    m_simulationController = nullptr;
+    delete m_boardController;
+    m_boardController = nullptr;
+}
+
+void MainWindow::keyPressEvent(QKeyEvent* event)
+{
+    if (event->key() == Qt::Key_Space && event->modifiers() == Qt::NoModifier && !event->isAutoRepeat())
+    {
+        QWidget* focus = QApplication::focusWidget();
+        const bool interactive = qobject_cast<QAbstractButton*>(focus) != nullptr ||
+                                 qobject_cast<QComboBox*>(focus) != nullptr ||
+                                 qobject_cast<QSpinBox*>(focus) != nullptr ||
+                                 qobject_cast<QSlider*>(focus) != nullptr ||
+                                 qobject_cast<QLineEdit*>(focus) != nullptr;
+        if (!interactive)
+        {
+            m_playAction->trigger();
+            event->accept();
+            return;
+        }
+    }
+    QMainWindow::keyPressEvent(event);
+}
 
 void MainWindow::setupCentralWidget()
 {
@@ -170,12 +228,13 @@ void MainWindow::setupMenus()
     connect(m_exportAction, &QAction::triggered, m_fileController, &controller::FileController::exportImage);
 
     fileMenu->addSeparator();
-    QAction* quitAction = fileMenu->addAction(tr("退出(&Q)"));
+    QAction* quitAction = fileMenu->addAction(QIcon(QStringLiteral(":/icons/power.svg")), tr("退出(&Q)"));
     quitAction->setShortcut(QKeySequence::Quit);
     connect(quitAction, &QAction::triggered, qApp, &QApplication::quit);
 
     auto* editMenu = menuBar()->addMenu(tr("编辑(&E)"));
-    QAction* demoAction = editMenu->addAction(tr("载入示例图案(&D)"));
+    QAction* demoAction =
+        editMenu->addAction(QIcon(QStringLiteral(":/icons/sparkles.svg")), tr("载入示例图案(&D)"));
     demoAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+D")));
     demoAction->setStatusTip(tr("载入高斯帕滑翔机炮或滑翔机"));
     connect(demoAction, &QAction::triggered, m_boardController, &controller::BoardController::loadDemo);
@@ -213,7 +272,6 @@ void MainWindow::setupMenus()
 
     auto* simMenu = menuBar()->addMenu(tr("模拟(&S)"));
     m_playAction = simMenu->addAction(QIcon(QStringLiteral(":/icons/play.svg")), tr("开始(&P)"));
-    m_playAction->setShortcut(QKeySequence(Qt::Key_Space));
     m_playAction->setIconText(tr("开始"));
     m_playAction->setStatusTip(tr("开始或暂停模拟"));
     connect(m_playAction, &QAction::triggered, m_simulationController, &controller::SimulationController::toggleRunning);
@@ -259,7 +317,8 @@ void MainWindow::setupMenus()
     m_gridAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+G")));
     connect(m_gridAction, &QAction::toggled, m_boardController, &controller::BoardController::setGridVisible);
 
-    QAction* fullscreenAction = viewMenu->addAction(tr("全屏(&F)"));
+    QAction* fullscreenAction =
+        viewMenu->addAction(QIcon(QStringLiteral(":/icons/maximize.svg")), tr("全屏(&F)"));
     fullscreenAction->setShortcut(QKeySequence(Qt::Key_F11));
     connect(fullscreenAction, &QAction::triggered, this, [this] {
         if (isFullScreen())
@@ -273,15 +332,21 @@ void MainWindow::setupMenus()
     });
 
     auto* helpMenu = menuBar()->addMenu(tr("帮助(&H)"));
-    QAction* controls = helpMenu->addAction(tr("操作说明(&C)"));
+    QAction* controls = helpMenu->addAction(QIcon(QStringLiteral(":/icons/circle-help.svg")), tr("操作说明(&C)"));
     controls->setShortcut(QKeySequence::HelpContents);
     connect(controls, &QAction::triggered, this, &MainWindow::showControlsHelp);
 
-    QAction* about = helpMenu->addAction(tr("关于生命游戏(&A)"));
+    QAction* about = helpMenu->addAction(QIcon(QStringLiteral(":/icons/info.svg")), tr("关于生命游戏(&A)"));
     connect(about, &QAction::triggered, this, &MainWindow::showAbout);
 
-    QAction* aboutQt = helpMenu->addAction(tr("关于 Qt(&Q)"));
-    connect(aboutQt, &QAction::triggered, qApp, &QApplication::aboutQt);
+    QAction* aboutQt = helpMenu->addAction(QIcon(QStringLiteral(":/icons/info.svg")), tr("关于 Qt(&Q)"));
+    connect(aboutQt, &QAction::triggered, this, [this] {
+        QMessageBox box(this);
+        box.setWindowTitle(tr("关于 Qt"));
+        box.setText(tr("Qt 版本：%1").arg(QString::fromLatin1(qVersion())));
+        box.addButton(tr("确定"), QMessageBox::AcceptRole);
+        box.exec();
+    });
 }
 
 void MainWindow::setupToolBar()
@@ -336,23 +401,26 @@ void MainWindow::showControlsHelp()
                    "</table>"
                    "<p>在侧边「图案」下拉框中选择图案后，鼠标会显示半透明预览，"
                    "点击棋盘即可放置。选择「画笔」可回到直接绘制模式。</p>"));
+    box.addButton(tr("关闭"), QMessageBox::AcceptRole);
     box.exec();
 }
 
 void MainWindow::showAbout()
 {
-    QMessageBox::about(
-        this,
-        tr("关于 生命游戏"),
-        tr("<h3>生命游戏</h3>"
-           "<p>Conway's Game of Life，1970 年由 John Horton Conway 提出。</p>"
-           "<p>每个细胞的状态只由邻居数量决定：邻居恰为 3 个时诞生，"
-           "邻居为 2 或 3 个时存活，其余情况死亡。看似简单的规则可以产生"
-           "滑翔机、振荡器、甚至能自我复制的图案。</p>"
-           "<p>版本 %1<br>"
-           "技术：C++17 · Qt 5 · 经典分层 MVC<br>"
-           "Domain 层为纯 C++，可脱离 Qt 单独测试。</p>")
-            .arg(QCoreApplication::applicationVersion()));
+    QMessageBox box(this);
+    box.setWindowTitle(tr("关于 生命游戏"));
+    box.setTextFormat(Qt::RichText);
+    box.setText(tr("<h3>生命游戏</h3>"
+                   "<p>Conway's Game of Life，1970 年由 John Horton Conway 提出。</p>"
+                   "<p>每个细胞的状态只由邻居数量决定：邻居恰为 3 个时诞生，"
+                   "邻居为 2 或 3 个时存活，其余情况死亡。看似简单的规则可以产生"
+                   "滑翔机、振荡器、甚至能自我复制的图案。</p>"
+                   "<p>版本 %1<br>"
+                   "技术：C++17 · Qt 5 · 经典分层 MVC<br>"
+                   "Domain 层为纯 C++，可脱离 Qt 单独测试。</p>")
+                    .arg(QCoreApplication::applicationVersion()));
+    box.addButton(tr("确定"), QMessageBox::AcceptRole);
+    box.exec();
 }
 
 } // namespace lifegame::app

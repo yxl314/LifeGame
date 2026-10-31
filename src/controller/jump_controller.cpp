@@ -1,5 +1,8 @@
 #include "controller/jump_controller.h"
 
+#include "controller/controller_log.h"
+#include "controller/error_text.h"
+
 #include <algorithm>
 
 #include "model/life_model.h"
@@ -20,17 +23,23 @@ JumpController::JumpController(model::LifeModel* model,
       m_messages(messages),
       m_factory(std::move(factory))
 {
-    connect(m_panel, &view::ControlPanel::rewindRequested, this, &JumpController::jumpBy);
+    connect(m_panel, &view::ControlPanel::rewindRequested, this, &JumpController::rewindBy);
     connect(m_panel, &view::ControlPanel::fastForwardRequested, this, &JumpController::jumpBy);
     connect(m_model, &model::LifeModel::jumpStarted, this, &JumpController::onJumpStarted);
     connect(m_model, &model::LifeModel::jumpProgress, this, &JumpController::onJumpProgress);
     connect(m_model, &model::LifeModel::jumpFinished, this, &JumpController::onJumpFinished);
     connect(m_model, &model::LifeModel::jumpCancelled, this, &JumpController::onJumpCancelled);
+    connect(m_model, &model::LifeModel::jumpFailed, this, &JumpController::onJumpFailed);
 }
 
 void JumpController::rewind()
 {
     jumpBy(-m_panel->jumpGenerations());
+}
+
+void JumpController::rewindBy(int generations)
+{
+    jumpBy(-generations);
 }
 
 void JumpController::fastForward()
@@ -66,9 +75,12 @@ void JumpController::jumpBy(int delta)
         return;
     }
 
-    if (!m_model->startJump(target) && m_messages != nullptr)
+    const model::CommandResult result = m_model->startJump(target);
+    qCDebug(lcController) << "jump command delta=" << delta << "target=" << target
+                          << "result=" << model::commandResultName(result);
+    if (model::failed(result) && m_messages != nullptr)
     {
-        m_messages->showMessage(tr("暂时无法跳转：可能已有跳转正在进行。"), 3000);
+        m_messages->showMessage(commandResultText(result), 4000);
     }
 }
 
@@ -76,12 +88,14 @@ void JumpController::onJumpStarted(const model::JumpInfo& info)
 {
     if (!m_factory)
     {
+        qCWarning(lcController) << "jump progress factory unavailable";
         return;
     }
 
     m_progress = m_factory();
     if (!m_progress)
     {
+        qCWarning(lcController) << "jump progress view unavailable; jump runs without cancel UI";
         return;
     }
     m_progress->setCancelHandler([this] { m_model->cancelJump(); });
@@ -111,6 +125,15 @@ void JumpController::onJumpCancelled()
     if (m_messages != nullptr)
     {
         m_messages->showMessage(tr("已取消跳转，仍停留在第 %1 代。").arg(m_model->stats().generation), 4000);
+    }
+}
+
+void JumpController::onJumpFailed(model::CommandResult reason)
+{
+    closeProgress();
+    if (m_messages != nullptr)
+    {
+        m_messages->showMessage(tr("跳转失败：%1").arg(commandResultText(reason)), 5000);
     }
 }
 

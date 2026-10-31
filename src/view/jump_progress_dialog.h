@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QPointer>
 #include <QWidget>
 
 #include <functional>
@@ -28,7 +29,7 @@ private:
     void closeDialog();
 
     QWidget* m_parent = nullptr;
-    std::unique_ptr<QProgressDialog> m_dialog;
+    QPointer<QProgressDialog> m_dialog;
     std::function<void()> m_cancelHandler;
 };
 

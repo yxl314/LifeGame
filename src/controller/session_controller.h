@@ -3,6 +3,7 @@
 #include <QObject>
 
 #include "model/app_settings.h"
+#include "service/settings_error.h"
 
 class QMainWindow;
 
@@ -47,7 +48,7 @@ public:
     /// Returns true when a persisted board was restored.
     bool restore();
 
-    void save();
+    service::SettingsError save();
 
     const model::AppSettings& settings() const;
 

@@ -10,6 +10,15 @@
 namespace lifegame::view
 {
 
+/// Narrow interface for destructive-action confirmation, so BoardController is
+/// testable without a modal QMessageBox.
+class ConfirmSink
+{
+public:
+    virtual ~ConfirmSink() = default;
+    virtual bool confirm(const QString& title, const QString& text) = 0;
+};
+
 /// Narrow interface used by controllers to report transient status text.
 class MessageSink
 {

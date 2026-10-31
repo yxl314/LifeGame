@@ -22,13 +22,44 @@ enum class RleError
     InvalidCharacter,
     RunTooLong,
     TooLarge,
-    InvalidRule
+    InvalidRule,
+    MissingTerminator
 };
+
+constexpr const char* rleErrorName(RleError error) noexcept
+{
+    switch (error)
+    {
+    case RleError::None:
+        return "None";
+    case RleError::EmptyBody:
+        return "EmptyBody";
+    case RleError::InvalidHeader:
+        return "InvalidHeader";
+    case RleError::InvalidCharacter:
+        return "InvalidCharacter";
+    case RleError::RunTooLong:
+        return "RunTooLong";
+    case RleError::TooLarge:
+        return "TooLarge";
+    case RleError::InvalidRule:
+        return "InvalidRule";
+    case RleError::MissingTerminator:
+        return "MissingTerminator";
+    }
+    return "Unknown";
+}
 
 struct RleErrorInfo
 {
     RleError code = RleError::None;
+
+    /// Original byte offset in the input (0-based).
     std::size_t position = 0;
+
+    /// 1-based source location for user-facing diagnostics.
+    int line = 1;
+    int column = 1;
 };
 
 struct DecodedDocument

@@ -1,10 +1,10 @@
 #include "service/settings_store.h"
 
+#include "service/service_log.h"
+
 #include <QSettings>
 
 #include <utility>
-
-#include "service/session_state.h"
 
 namespace lifegame::service
 {
@@ -16,36 +16,119 @@ SettingsStore::SettingsStore(std::unique_ptr<QSettings> settings)
 
 SettingsStore::~SettingsStore() = default;
 
-SessionState SettingsStore::load() const
+SettingsLoadResult SettingsStore::load() const
 {
-    SessionState state;
+    SettingsLoadResult result;
     if (!m_settings)
     {
-        return state;
+        result.error = SettingsError::AccessError;
+        result.detail = QStringLiteral("no QSettings instance");
+        return result;
     }
 
-    state.settings.jumpStep = m_settings->value(QStringLiteral("settings/jump_step"), 100).toInt();
-    state.settings.sizeStep = m_settings->value(QStringLiteral("settings/size_step"), 5).toInt();
-    state.settings.snapshotInterval =
-        m_settings->value(QStringLiteral("settings/snapshot_interval"), 100).toInt();
-    state.settings.density = m_settings->value(QStringLiteral("simulation/density"), 30).toInt();
-    state.settings.speed = m_settings->value(QStringLiteral("simulation/speed"), 10).toInt();
-    state.settings.gridVisible = m_settings->value(QStringLiteral("view/grid"), true).toBool();
+    bool corrupt = false;
+    const auto readInt = [this, &corrupt](const char* key, int fallback) {
+        bool ok = false;
+        const int value = m_settings->value(QString::fromLatin1(key), fallback).toInt(&ok);
+        if (!ok)
+        {
+            corrupt = true;
+            return fallback;
+        }
+        return value;
+    };
+    const auto readBool = [this, &corrupt](const char* key, bool fallback) {
+        bool ok = false;
+        const bool value = m_settings->value(QString::fromLatin1(key), fallback).toBool();
+        // QVariant::toBool() has no error flag; check the stored type instead.
+        const QVariant raw = m_settings->value(QString::fromLatin1(key), fallback);
+        if (raw.type() == QVariant::String)
+        {
+            const QString text = raw.toString().trimmed().toLower();
+            ok = text == QStringLiteral("true") || text == QStringLiteral("false") ||
+                 text == QStringLiteral("1") || text == QStringLiteral("0");
+        }
+        else
+        {
+            ok = true;
+        }
+        if (!ok)
+        {
+            corrupt = true;
+            return fallback;
+        }
+        return value;
+    };
+
+    SessionState& state = result.state;
+    state.settings.jumpStep = readInt("settings/jump_step", 100);
+    state.settings.sizeStep = readInt("settings/size_step", 5);
+    state.settings.snapshotInterval = readInt("settings/snapshot_interval", 100);
+    state.settings.density = readInt("simulation/density", 30);
+    state.settings.speed = readInt("simulation/speed", 10);
+    state.settings.gridVisible = readBool("view/grid", true);
     state.settings = model::normalized(state.settings);
 
     state.boardRle = m_settings->value(QStringLiteral("board/rle")).toString();
-    state.ruleNotation = m_settings->value(QStringLiteral("simulation/rule"), QStringLiteral("B3/S23")).toString();
-    state.boundary = m_settings->value(QStringLiteral("simulation/boundary"), 0).toInt();
-    state.generation = m_settings->value(QStringLiteral("board/generation"), 0).toInt();
+    state.ruleNotation =
+        m_settings->value(QStringLiteral("simulation/rule"), QStringLiteral("B3/S23")).toString();
+
+    bool boundaryOk = false;
+    state.boundary = m_settings->value(QStringLiteral("simulation/boundary"), 0).toInt(&boundaryOk);
+    if (!boundaryOk || (state.boundary != 0 && state.boundary != 1))
+    {
+        state.boundary = 0;
+        corrupt = true;
+    }
+
+    bool generationOk = false;
+    state.generation = m_settings->value(QStringLiteral("board/generation"), 0).toInt(&generationOk);
+    if (!generationOk || state.generation < 0)
+    {
+        state.generation = 0;
+        corrupt = true;
+    }
     state.windowGeometry = m_settings->value(QStringLiteral("window/geometry")).toByteArray();
-    return state;
+
+    switch (m_settings->status())
+    {
+    case QSettings::NoError:
+        break;
+    case QSettings::AccessError:
+        result.error = SettingsError::AccessError;
+        result.detail = m_settings->fileName();
+        break;
+    case QSettings::FormatError:
+        result.error = SettingsError::FormatError;
+        result.detail = m_settings->fileName();
+        break;
+    }
+    if (result.error == SettingsError::None && corrupt)
+    {
+        result.error = SettingsError::CorruptData;
+        result.detail = m_settings->fileName();
+    }
+    if (result.error == SettingsError::None)
+    {
+        qCDebug(lcIo) << "settings loaded file=" << m_settings->fileName();
+    }
+    else
+    {
+        qCWarning(lcIo) << "settings load failed error=" << settingsErrorName(result.error)
+                        << "file=" << m_settings->fileName();
+    }
+    return result;
 }
 
-void SettingsStore::save(const SessionState& state)
+SettingsError SettingsStore::save(const SessionState& state, QString* detail)
 {
     if (!m_settings)
     {
-        return;
+        if (detail != nullptr)
+        {
+            *detail = QStringLiteral("no QSettings instance");
+        }
+        return SettingsError::AccessError;
     }
 
     m_settings->setValue(QStringLiteral("settings/jump_step"), state.settings.jumpStep);
@@ -60,6 +143,29 @@ void SettingsStore::save(const SessionState& state)
     m_settings->setValue(QStringLiteral("view/grid"), state.settings.gridVisible);
     m_settings->setValue(QStringLiteral("window/geometry"), state.windowGeometry);
     m_settings->sync();
+
+    switch (m_settings->status())
+    {
+    case QSettings::NoError:
+        qCDebug(lcIo) << "settings saved file=" << m_settings->fileName();
+        return SettingsError::None;
+    case QSettings::AccessError:
+        if (detail != nullptr)
+        {
+            *detail = m_settings->fileName();
+        }
+        qCWarning(lcIo) << "settings save failed error=AccessError file=" << m_settings->fileName();
+        return SettingsError::AccessError;
+    case QSettings::FormatError:
+        if (detail != nullptr)
+        {
+            *detail = m_settings->fileName();
+        }
+        qCWarning(lcIo) << "settings save failed error=FormatError file=" << m_settings->fileName();
+        return SettingsError::FormatError;
+    }
+    qCWarning(lcIo) << "settings save failed error=unknown file=" << m_settings->fileName();
+    return SettingsError::AccessError;
 }
 
 } // namespace lifegame::service

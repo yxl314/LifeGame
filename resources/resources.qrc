@@ -15,6 +15,22 @@
         <file>icons/rewind.svg</file>
         <file>icons/fast-forward.svg</file>
         <file>icons/settings.svg</file>
+        <file>icons/chevron-up.svg</file>
+        <file>icons/chevron-down.svg</file>
+        <file>icons/check.svg</file>
+        <file>icons/grid-3x3.svg</file>
+        <file>icons/maximize.svg</file>
+        <file>icons/circle-help.svg</file>
+        <file>icons/info.svg</file>
+        <file>icons/x.svg</file>
+        <file>icons/atom.svg</file>
+        <file>icons/sparkles.svg</file>
+        <file>icons/power.svg</file>
+        <file>icons/hash.svg</file>
+        <file>icons/users.svg</file>
+        <file>icons/percent.svg</file>
+        <file>icons/gauge.svg</file>
+        <file>icons/arrow-left-right.svg</file>
         <file>icons/LICENSE-lucide.txt</file>
     </qresource>
 </RCC>

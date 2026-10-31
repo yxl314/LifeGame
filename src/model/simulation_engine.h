@@ -9,6 +9,7 @@
 #include "domain/boundary.h"
 #include "domain/grid.h"
 #include "domain/rule.h"
+#include "model/command_result.h"
 
 namespace lifegame::model
 {
@@ -22,7 +23,8 @@ namespace lifegame::model
  * irrelevant (the worker still finishes, but no signal is emitted and a new
  * request is allowed once it returns).
  *
- * The engine is the only model component that uses QtConcurrent, which keeps
+ * The engine owns the one-generation QtConcurrent pipeline; jump replay also
+ * uses QtConcurrent, in LifeModel, but is kept separate from this class. This keeps
  * `LifeModel` focused on state and invariants.
  */
 class SimulationEngine : public QObject
@@ -35,8 +37,12 @@ public:
 
     bool isBusy() const;
 
-    /// Returns the request id, or 0 when busy/invalid.
-    quint64 request(const domain::Grid& board, const domain::Rule& rule, domain::Boundary boundary);
+    /// Starts a request and writes its id. Returns Busy/OutOfBounds/OutOfMemory
+    /// on failure; no exceptions are used.
+    CommandResult request(const domain::Grid& board,
+                          const domain::Rule& rule,
+                          domain::Boundary boundary,
+                          quint64* requestId);
 
     /// Invalidate the in-flight request; the worker is not interrupted.
     void discardPending();
@@ -46,6 +52,7 @@ public:
 
 signals:
     void stepReady(quint64 requestId);
+    void stepFailed(lifegame::model::CommandResult reason);
 
 private slots:
     void onFinished();
@@ -57,6 +64,7 @@ private:
     quint64 m_activeId = 0;
     quint64 m_nextId = 1;
     bool m_busy = false;
+    int m_expectedTasks = 0;
 };
 
 } // namespace lifegame::model

@@ -25,6 +25,9 @@ struct Pattern
     bool alive(int row, int col) const;
     int population() const;
 
+    /// True when width/height are non-negative and cells matches width * height.
+    bool isConsistent() const;
+
     /**
      * Build a pattern from ASCII art.
      *

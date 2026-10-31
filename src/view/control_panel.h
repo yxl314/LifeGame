@@ -104,6 +104,7 @@ private:
     int m_jumpStep = 100;
     QPushButton* m_rewindButton = nullptr;
     QPushButton* m_forwardButton = nullptr;
+    QPushButton* m_applySizeButton = nullptr;
 
     QComboBox* m_patternCombo = nullptr;
     QLabel* m_patternText = nullptr;

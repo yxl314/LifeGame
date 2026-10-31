@@ -1,6 +1,10 @@
 #include "service/rle_file_service.h"
 
+#include "service/service_log.h"
+
 #include <QFile>
+#include <QSaveFile>
+#include <QFileInfo>
 #include <QIODevice>
 
 #include <string_view>
@@ -8,46 +12,73 @@
 namespace lifegame::service
 {
 
+namespace
+{
+
+constexpr qint64 kMaxRleFileBytes = 8 * 1024 * 1024;
+
+} // namespace
+
 RleReadResult RleFileService::read(const QString& path) const
 {
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly))
     {
-        return {std::nullopt, file.errorString(), {}};
+        qCWarning(lcIo) << "RLE open failed path=" << path << "error=" << file.errorString();
+        return {std::nullopt, FileError::OpenFailed, {}, file.errorString()};
+    }
+    if (file.size() > kMaxRleFileBytes)
+    {
+        qCWarning(lcIo) << "RLE read rejected reason=too_large path=" << path << "bytes=" << file.size();
+        return {std::nullopt, FileError::TooLarge, {}, {}};
     }
 
     const QByteArray data = file.readAll();
+    if (file.error() != QFileDevice::NoError)
+    {
+        qCWarning(lcIo) << "RLE read failed path=" << path << "error=" << file.errorString();
+        return {std::nullopt, FileError::ReadFailed, {}, file.errorString()};
+    }
+
     const domain::RleDecodeResult decoded =
         domain::decodeRle(std::string_view(data.constData(), static_cast<std::size_t>(data.size())));
     if (!decoded.document.has_value())
     {
-        return {std::nullopt, QString(), decoded.error};
+        qCWarning(lcIo) << "RLE decode failed path=" << path << "code=" << rleErrorName(decoded.error.code)
+                        << "line=" << decoded.error.line << "column=" << decoded.error.column;
+        return {std::nullopt, FileError::DecodeFailed, decoded.error, {}};
     }
-    return {decoded.document, QString(), {}};
+    qCDebug(lcIo) << "RLE read path=" << path << "bytes=" << data.size();
+    return {decoded.document, FileError::None, {}, {}};
 }
 
-bool RleFileService::write(const QString& path, const QString& text, QString* error) const
+FileError RleFileService::write(const QString& path, const QString& text, QString* detail) const
 {
-    QFile file(path);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+    // QSaveFile writes to a temporary file and commits atomically, so a failed
+    // write cannot truncate an existing user file.
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly))
     {
-        if (error != nullptr)
+        if (detail != nullptr)
         {
-            *error = file.errorString();
+            *detail = file.errorString();
         }
-        return false;
+        qCWarning(lcIo) << "RLE write open failed path=" << path << "error=" << file.errorString();
+        return FileError::OpenFailed;
     }
 
     const QByteArray data = text.toUtf8();
-    if (file.write(data) != data.size() || !file.flush())
+    if (file.write(data) != data.size() || !file.commit())
     {
-        if (error != nullptr)
+        if (detail != nullptr)
         {
-            *error = file.errorString();
+            *detail = file.errorString();
         }
-        return false;
+        qCWarning(lcIo) << "RLE write failed path=" << path << "error=" << file.errorString();
+        return FileError::WriteFailed;
     }
-    return true;
+    qCDebug(lcIo) << "RLE written path=" << path << "bytes=" << data.size();
+    return FileError::None;
 }
 
 } // namespace lifegame::service

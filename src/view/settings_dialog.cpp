@@ -2,6 +2,7 @@
 
 #include <QDialogButtonBox>
 #include <QFormLayout>
+#include <QIcon>
 #include <QLabel>
 #include <QPushButton>
 #include <QSpinBox>
@@ -68,7 +69,9 @@ SettingsDialog::SettingsDialog(QWidget* parent)
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     buttons->button(QDialogButtonBox::Ok)->setText(tr("保存"));
+    buttons->button(QDialogButtonBox::Ok)->setIcon(QIcon(QStringLiteral(":/icons/check.svg")));
     buttons->button(QDialogButtonBox::Cancel)->setText(tr("取消"));
+    buttons->button(QDialogButtonBox::Cancel)->setIcon(QIcon(QStringLiteral(":/icons/x.svg")));
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     root->addWidget(buttons);
@@ -76,6 +79,7 @@ SettingsDialog::SettingsDialog(QWidget* parent)
 
 void SettingsDialog::setValues(const model::AppSettings& values)
 {
+    m_base = values;
     m_jumpStepSpin->setValue(values.jumpStep);
     m_sizeStepSpin->setValue(values.sizeStep);
     m_snapshotSpin->setValue(values.snapshotInterval);
@@ -83,7 +87,7 @@ void SettingsDialog::setValues(const model::AppSettings& values)
 
 model::AppSettings SettingsDialog::values() const
 {
-    model::AppSettings result;
+    model::AppSettings result = m_base;
     result.jumpStep = m_jumpStepSpin->value();
     result.sizeStep = m_sizeStepSpin->value();
     result.snapshotInterval = m_snapshotSpin->value();

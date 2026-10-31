@@ -55,7 +55,8 @@ public:
     bool cell(int row, int col) const;
     void setCell(int row, int col, bool alive);
 
-    /// Toggle a cell and return its new state. Out-of-bounds returns false.
+    /// Toggle a cell and return its new state. Out-of-bounds returns false
+    /// (which is also the state after toggling an alive cell to dead).
     bool toggleCell(int row, int col);
 
     int population() const;
@@ -74,11 +75,6 @@ public:
     }
 
     const Cell* data() const
-    {
-        return m_cells.data();
-    }
-
-    Cell* data()
     {
         return m_cells.data();
     }

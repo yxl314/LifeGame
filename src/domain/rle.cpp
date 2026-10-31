@@ -28,6 +28,54 @@ std::string_view trim(std::string_view text)
     return text;
 }
 
+RleErrorInfo makeError(RleError code, std::string_view source, std::size_t offset)
+{
+    RleErrorInfo info;
+    info.code = code;
+    info.position = offset;
+
+    const std::size_t limit = std::min(offset, source.size());
+    for (std::size_t i = 0; i < limit; ++i)
+    {
+        if (source[i] == '\n')
+        {
+            ++info.line;
+            info.column = 1;
+        }
+        else
+        {
+            ++info.column;
+        }
+    }
+    return info;
+}
+
+struct BodyLine
+{
+    std::size_t bodyStart = 0;
+    std::size_t sourceStart = 0;
+};
+
+std::size_t sourceOffsetForBody(const std::vector<BodyLine>& lines, std::size_t bodyIndex)
+{
+    if (lines.empty())
+    {
+        return 0;
+    }
+    const auto it = std::upper_bound(lines.begin(),
+                                     lines.end(),
+                                     bodyIndex,
+                                     [](std::size_t index, const BodyLine& line) {
+                                         return index < line.bodyStart;
+                                     });
+    if (it == lines.begin())
+    {
+        return lines.front().sourceStart;
+    }
+    const BodyLine& line = *(it - 1);
+    return line.sourceStart + (bodyIndex - line.bodyStart);
+}
+
 bool startsWithHeaderKey(std::string_view line)
 {
     return !line.empty() && (line.front() == 'x' || line.front() == 'X') &&
@@ -107,12 +155,12 @@ RleErrorInfo parseHeader(std::string_view line, Header* header)
             {
                 if (!value.empty())
                 {
-                    const std::optional<Rule> rule = Rule::fromNotation(value);
-                    if (!rule.has_value())
+                    const RuleParseResult parsed = Rule::parse(value);
+                    if (parsed.error != RuleParseError::None)
                     {
                         return {RleError::InvalidRule, start};
                     }
-                    header->rule = rule->notation();
+                    header->rule = parsed.rule.notation();
                 }
             }
         }
@@ -170,6 +218,7 @@ RleDecodeResult decodeRle(std::string_view text)
     std::string title;
     std::string description;
     std::string body;
+    std::vector<BodyLine> bodyLines;
     bool sawHeader = false;
 
     std::size_t lineStart = 0;
@@ -207,13 +256,19 @@ RleDecodeResult decodeRle(std::string_view text)
                 const RleErrorInfo error = parseHeader(clean, &header);
                 if (error.code != RleError::None)
                 {
-                    return {std::nullopt, error};
+                    const std::size_t cleanOffset =
+                        static_cast<std::size_t>(clean.data() - text.data());
+                    return {std::nullopt, makeError(error.code, text, cleanOffset + error.position)};
                 }
             }
             else
             {
+                const std::size_t cleanOffset =
+                    static_cast<std::size_t>(clean.data() - text.data());
+                const std::size_t bodyStart = body.size();
                 body.append(clean);
                 body.push_back('\n');
+                bodyLines.push_back({bodyStart, cleanOffset});
             }
         }
 
@@ -226,16 +281,16 @@ RleDecodeResult decodeRle(std::string_view text)
 
     if (body.empty())
     {
-        return {std::nullopt, {RleError::EmptyBody, 0}};
+        return {std::nullopt, makeError(RleError::EmptyBody, text, 0)};
     }
 
     if (header.hasWidth && header.width > kMaxExtent)
     {
-        return {std::nullopt, {RleError::TooLarge, 0}};
+        return {std::nullopt, makeError(RleError::TooLarge, text, 0)};
     }
     if (header.hasHeight && header.height > kMaxExtent)
     {
-        return {std::nullopt, {RleError::TooLarge, 0}};
+        return {std::nullopt, makeError(RleError::TooLarge, text, 0)};
     }
 
     std::vector<std::vector<Cell>> rows(1);
@@ -253,7 +308,7 @@ RleDecodeResult decodeRle(std::string_view text)
             run = run * 10 + (ch - '0');
             if (run > static_cast<std::int64_t>(kMaxExtent) * kMaxExtent)
             {
-                return {std::nullopt, {RleError::RunTooLong, i}};
+                return {std::nullopt, makeError(RleError::RunTooLong, text, sourceOffsetForBody(bodyLines, i))};
             }
             continue;
         }
@@ -272,7 +327,7 @@ RleDecodeResult decodeRle(std::string_view text)
         case 'B':
             if (col + count > kMaxExtent)
             {
-                return {std::nullopt, {RleError::TooLarge, i}};
+                return {std::nullopt, makeError(RleError::TooLarge, text, sourceOffsetForBody(bodyLines, i))};
             }
             col += count;
             maxCol = std::max(maxCol, col);
@@ -283,7 +338,7 @@ RleDecodeResult decodeRle(std::string_view text)
         {
             if (row >= kMaxExtent || col + count > kMaxExtent)
             {
-                return {std::nullopt, {RleError::TooLarge, i}};
+                return {std::nullopt, makeError(RleError::TooLarge, text, sourceOffsetForBody(bodyLines, i))};
             }
             if (static_cast<std::int64_t>(rows.size()) <= row)
             {
@@ -308,7 +363,7 @@ RleDecodeResult decodeRle(std::string_view text)
             col = 0;
             if (row >= kMaxExtent)
             {
-                return {std::nullopt, {RleError::TooLarge, i}};
+                return {std::nullopt, makeError(RleError::TooLarge, text, sourceOffsetForBody(bodyLines, i))};
             }
             if (static_cast<std::int64_t>(rows.size()) <= row)
             {
@@ -321,8 +376,15 @@ RleDecodeResult decodeRle(std::string_view text)
             break;
 
         default:
-            return {std::nullopt, {RleError::InvalidCharacter, i}};
+            return {std::nullopt, makeError(RleError::InvalidCharacter, text, sourceOffsetForBody(bodyLines, i))};
         }
+    }
+
+    if (!finished)
+    {
+        const std::size_t offset =
+            body.empty() ? 0 : sourceOffsetForBody(bodyLines, body.size() - 1);
+        return {std::nullopt, makeError(RleError::MissingTerminator, text, offset)};
     }
 
     const int contentWidth = std::max(1, static_cast<int>(maxCol));
@@ -332,7 +394,7 @@ RleDecodeResult decodeRle(std::string_view text)
 
     if (width > kMaxExtent || height > kMaxExtent)
     {
-        return {std::nullopt, {RleError::TooLarge, 0}};
+        return {std::nullopt, makeError(RleError::TooLarge, text, 0)};
     }
 
     DecodedDocument document;

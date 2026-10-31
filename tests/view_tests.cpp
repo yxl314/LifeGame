@@ -9,7 +9,11 @@
 
 #include "domain/pattern_library.h"
 #include "model/life_model.h"
+
+#define VERIFY_OK(expression) QVERIFY(lifegame::model::succeeded(expression))
+#define VERIFY_FAIL(expression) QVERIFY(lifegame::model::failed(expression))
 #include "view/board_view.h"
+#include "view/jump_progress_dialog.h"
 #include "view/control_panel.h"
 #include "view/pattern_catalog.h"
 #include "view/rule_catalog.h"
@@ -45,6 +49,7 @@ private slots:
     void boardViewObservesModelAndCapsExport();
     void catalogs();
     void settingsDialogRoundTrip();
+    void progressDialogProgrammaticCloseDoesNotCancel();
 };
 
 void ViewTests::speedScale()
@@ -77,7 +82,7 @@ void ViewTests::speedSliderDoesNotWriteBack()
 void ViewTests::controlPanelObservesModel()
 {
     lifegame::model::LifeModel model;
-    QVERIFY(model.resizeBoard(20, 20));
+    VERIFY_OK(model.resizeBoard(20, 20));
 
     lifegame::view::ControlPanel panel;
     lifegame::view::RuleCatalog catalog;
@@ -102,7 +107,7 @@ void ViewTests::controlPanelObservesModel()
 void ViewTests::boardViewObservesModelAndCapsExport()
 {
     lifegame::model::LifeModel model;
-    QVERIFY(model.resizeBoard(20, 20));
+    VERIFY_OK(model.resizeBoard(20, 20));
 
     lifegame::view::BoardView view;
     view.setModel(&model);
@@ -114,7 +119,7 @@ void ViewTests::boardViewObservesModelAndCapsExport()
     QVERIFY(image.width() > 0);
     QVERIFY(image.height() > 0);
 
-    QVERIFY(model.resizeBoard(400, 400));
+    VERIFY_OK(model.resizeBoard(400, 400));
     QVERIFY(model.setCell(0, 0, true));
     const QImage large = view.renderBoardImage();
     QVERIFY(!large.isNull());
@@ -146,12 +151,37 @@ void ViewTests::settingsDialogRoundTrip()
     values.jumpStep = 500;
     values.sizeStep = 10;
     values.snapshotInterval = 250;
+    values.density = 55;
+    values.speed = 42;
+    values.gridVisible = false;
     dialog.setValues(values);
 
     const lifegame::model::AppSettings result = dialog.values();
     QCOMPARE(result.jumpStep, 500);
     QCOMPARE(result.sizeStep, 10);
     QCOMPARE(result.snapshotInterval, 250);
+    // Fields the dialog does not edit must survive the round-trip.
+    QCOMPARE(result.density, 55);
+    QCOMPARE(result.speed, 42);
+    QCOMPARE(result.gridVisible, false);
+}
+
+void ViewTests::progressDialogProgrammaticCloseDoesNotCancel()
+{
+    bool cancelled = false;
+    QWidget parent;
+    lifegame::view::JumpProgressDialog dialog(&parent);
+    dialog.setCancelHandler([&cancelled] { cancelled = true; });
+
+    lifegame::model::JumpInfo info;
+    info.fromGeneration = 0;
+    info.toGeneration = 100;
+    info.replayGenerations = 100;
+    dialog.show(info);
+
+    // Simulates JumpController::closeProgress() during shutdown/finish.
+    dialog.close();
+    QVERIFY(!cancelled);
 }
 
 QTEST_MAIN(ViewTests)

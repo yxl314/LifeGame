@@ -1,5 +1,7 @@
 #include "controller/configuration_controller.h"
 
+#include "controller/error_text.h"
+
 #include <QAction>
 #include <QActionGroup>
 
@@ -52,20 +54,18 @@ void ConfigurationController::setRuleByNotation(const QString& notation)
     }
 
     const std::string target = notation.toStdString();
-    if (!domain::Rule::fromNotation(target).has_value())
-    {
-        if (m_messages != nullptr)
-        {
-            m_messages->showMessage(tr("规则记号无效：%1").arg(notation), 4000);
-        }
-        return;
-    }
     if (m_model->rule().notation() == target)
     {
         return;
     }
 
-    if (m_model->setRuleByNotation(target) && m_messages != nullptr)
+    const model::CommandResult result = m_model->setRuleByNotation(target);
+    if (model::failed(result) && m_messages != nullptr)
+    {
+        m_messages->showMessage(tr("规则切换失败：%1").arg(commandResultText(result)), 4000);
+        return;
+    }
+    if (m_messages != nullptr)
     {
         m_messages->showMessage(
             tr("规则已切换为 %1（%2）。").arg(m_catalog->nameForNotation(notation), notation), 4000);
@@ -110,7 +110,13 @@ void ConfigurationController::setBoundaryIndex(int index)
     {
         return;
     }
-    if (m_model->setBoundary(boundary) && m_messages != nullptr)
+    const model::CommandResult result = m_model->setBoundary(boundary);
+    if (model::failed(result) && m_messages != nullptr)
+    {
+        m_messages->showMessage(tr("边界切换失败：%1").arg(commandResultText(result)), 4000);
+        return;
+    }
+    if (m_messages != nullptr)
     {
         m_messages->showMessage(boundary == domain::Boundary::Wrap ? tr("已启用环绕边界。")
                                                                   : tr("已启用死亡边界。"),

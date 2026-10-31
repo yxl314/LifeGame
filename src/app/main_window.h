@@ -25,6 +25,8 @@ class LifeModel;
 namespace lifegame::service
 {
 class SettingsStore;
+class RleFileService;
+class ImageFileService;
 }
 
 namespace lifegame::view
@@ -34,6 +36,8 @@ class ControlPanel;
 class PatternCatalog;
 class RuleCatalog;
 class StatusBarView;
+class ConfirmSink;
+class MessageBoxConfirmSink;
 } // namespace view
 
 namespace lifegame::app
@@ -50,7 +54,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    explicit MainWindow(QWidget* parent = nullptr);
+    explicit MainWindow(QWidget* parent = nullptr, view::ConfirmSink* confirm = nullptr);
     ~MainWindow() override;
 
 private:
@@ -60,6 +64,9 @@ private:
     void setupToolBar();
     void showControlsHelp();
     void showAbout();
+
+protected:
+    void keyPressEvent(QKeyEvent* event) override;
 
     model::LifeModel* m_model = nullptr;
     view::BoardView* m_view = nullptr;
@@ -76,6 +83,10 @@ private:
     controller::SessionController* m_sessionController = nullptr;
 
     std::unique_ptr<service::SettingsStore> m_settingsStore;
+    std::unique_ptr<service::RleFileService> m_rleService;
+    std::unique_ptr<service::ImageFileService> m_imageService;
+    std::unique_ptr<view::MessageBoxConfirmSink> m_defaultConfirm;
+    view::ConfirmSink* m_confirm = nullptr;
 
     QAction* m_openAction = nullptr;
     QAction* m_saveAction = nullptr;

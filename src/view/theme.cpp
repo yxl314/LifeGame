@@ -1,5 +1,7 @@
 #include "view/theme.h"
 
+#include "view/view_log.h"
+
 #include <QApplication>
 #include <QFile>
 #include <QLinearGradient>
@@ -46,6 +48,7 @@ void applyStyleSheet(QApplication& app)
     QFile file(QStringLiteral(":/style.qss"));
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
     {
+        qCWarning(lcView) << "style sheet resource missing: :/style.qss";
         return;
     }
     app.setStyleSheet(QString::fromUtf8(file.readAll()));

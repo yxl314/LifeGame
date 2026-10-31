@@ -31,7 +31,7 @@ namespace lifegame::view
 namespace
 {
 
-QWidget* makeStat(const QString& caption, QLabel** value, QWidget* parent)
+QWidget* makeStat(const QString& iconPath, const QString& caption, QLabel** value, QWidget* parent)
 {
     auto* container = new QWidget(parent);
     auto* layout = new QVBoxLayout(container);
@@ -42,11 +42,22 @@ QWidget* makeStat(const QString& caption, QLabel** value, QWidget* parent)
     label->setObjectName(QStringLiteral("StatValue"));
     label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 
+    auto* icon = new QLabel(container);
+    icon->setPixmap(QIcon(iconPath).pixmap(12, 12));
+    icon->setFixedSize(12, 12);
+
     auto* captionLabel = new QLabel(caption, container);
     captionLabel->setObjectName(QStringLiteral("StatCaption"));
 
+    auto* captionRow = new QHBoxLayout();
+    captionRow->setContentsMargins(0, 0, 0, 0);
+    captionRow->setSpacing(4);
+    captionRow->addWidget(icon);
+    captionRow->addWidget(captionLabel);
+    captionRow->addStretch(1);
+
     layout->addWidget(label);
-    layout->addWidget(captionLabel);
+    layout->addLayout(captionRow);
     *value = label;
     return container;
 }
@@ -65,8 +76,8 @@ ControlPanel::ControlPanel(QWidget* parent)
 void ControlPanel::setupUi()
 {
     auto* root = new QVBoxLayout(this);
-    root->setContentsMargins(16, 16, 16, 12);
-    root->setSpacing(9);
+    root->setContentsMargins(14, 12, 14, 8);
+    root->setSpacing(7);
 
     auto* header = new QHBoxLayout();
     header->setSpacing(10);
@@ -91,19 +102,19 @@ void ControlPanel::setupUi()
     auto* stats = new QFrame(this);
     stats->setObjectName(QStringLiteral("Card"));
     auto* statsLayout = new QHBoxLayout(stats);
-    statsLayout->setContentsMargins(12, 10, 12, 10);
+    statsLayout->setContentsMargins(10, 8, 10, 8);
     statsLayout->setSpacing(8);
-    statsLayout->addWidget(makeStat(tr("代数"), &m_generationValue, stats));
-    statsLayout->addWidget(makeStat(tr("存活"), &m_populationValue, stats));
-    statsLayout->addWidget(makeStat(tr("密度"), &m_densityValue, stats));
+    statsLayout->addWidget(makeStat(QStringLiteral(":/icons/hash.svg"), tr("代数"), &m_generationValue, stats));
+    statsLayout->addWidget(makeStat(QStringLiteral(":/icons/users.svg"), tr("存活"), &m_populationValue, stats));
+    statsLayout->addWidget(makeStat(QStringLiteral(":/icons/percent.svg"), tr("密度"), &m_densityValue, stats));
     m_densityValue->setText(QStringLiteral("0.0%"));
     root->addWidget(stats);
 
     m_playButton = new QPushButton(tr("开始"), this);
     m_playButton->setObjectName(QStringLiteral("PrimaryButton"));
-    m_playButton->setMinimumHeight(40);
+    m_playButton->setMinimumHeight(36);
     m_playButton->setIcon(QIcon(QStringLiteral(":/icons/play.svg")));
-    m_playButton->setAccessibleName(tr("开始或暂停"));
+    m_playButton->setAccessibleName(tr("开始或暂停模拟"));
     m_playButton->setToolTip(tr("开始或暂停模拟（空格）"));
     connect(m_playButton, &QPushButton::clicked, this, &ControlPanel::playPauseRequested);
     root->addWidget(m_playButton);
@@ -112,11 +123,13 @@ void ControlPanel::setupUi()
     actionRow->setSpacing(8);
     m_stepButton = new QPushButton(tr("单步"), this);
     m_stepButton->setIcon(QIcon(QStringLiteral(":/icons/step-forward.svg")));
+    m_stepButton->setAccessibleName(tr("单步演化一代"));
     m_stepButton->setToolTip(tr("只演化一代（F6）"));
     connect(m_stepButton, &QPushButton::clicked, this, &ControlPanel::stepRequested);
 
     m_clearButton = new QPushButton(tr("清空"), this);
     m_clearButton->setIcon(QIcon(QStringLiteral(":/icons/trash-2.svg")));
+    m_clearButton->setAccessibleName(tr("清空棋盘"));
     m_clearButton->setToolTip(tr("清空棋盘并停止模拟"));
     connect(m_clearButton, &QPushButton::clicked, this, &ControlPanel::clearRequested);
 
@@ -128,12 +141,14 @@ void ControlPanel::setupUi()
     randomRow->setSpacing(8);
     m_randomButton = new QPushButton(tr("随机填充"), this);
     m_randomButton->setIcon(QIcon(QStringLiteral(":/icons/dices.svg")));
+    m_randomButton->setAccessibleName(tr("随机填充棋盘"));
     m_randomButton->setToolTip(tr("按右侧密度随机撒点"));
     m_densitySpin = new QSpinBox(this);
     m_densitySpin->setRange(model::limits::kDensityMin, model::limits::kDensityMax);
     m_densitySpin->setValue(model::AppSettings{}.density);
     m_densitySpin->setSuffix(tr(" %"));
     m_densitySpin->setFixedWidth(72);
+    m_densitySpin->setAccessibleName(tr("随机填充密度"));
     m_densitySpin->setToolTip(tr("随机填充的存活概率"));
     connect(m_randomButton, &QPushButton::clicked, this, [this] {
         emit randomizeRequested(m_densitySpin->value());
@@ -144,6 +159,9 @@ void ControlPanel::setupUi()
 
     auto* speedRow = new QHBoxLayout();
     speedRow->setSpacing(8);
+    auto* speedIcon = new QLabel(this);
+    speedIcon->setPixmap(QIcon(QStringLiteral(":/icons/gauge.svg")).pixmap(14, 14));
+    speedIcon->setFixedSize(14, 14);
     auto* speedTitle = new QLabel(tr("速度"), this);
     speedTitle->setObjectName(QStringLiteral("Muted"));
     m_speedSlider = new QSlider(Qt::Horizontal, this);
@@ -151,6 +169,7 @@ void ControlPanel::setupUi()
     m_speedSlider->setSingleStep(1);
     m_speedSlider->setPageStep(10);
     m_speedSlider->setValue(sliderPositionForSpeed(m_speed));
+    m_speedSlider->setAccessibleName(tr("模拟速度"));
     m_speedSlider->setToolTip(tr("模拟速度：每秒演化代数（最高 %1）").arg(model::limits::kSpeedMax));
     m_speedValue = new QLabel(this);
     m_speedValue->setObjectName(QStringLiteral("ValueLabel"));
@@ -165,6 +184,7 @@ void ControlPanel::setupUi()
             emit speedChanged(speed);
         }
     });
+    speedRow->addWidget(speedIcon);
     speedRow->addWidget(speedTitle);
     speedRow->addWidget(m_speedSlider, 1);
     speedRow->addWidget(m_speedValue);
@@ -173,8 +193,10 @@ void ControlPanel::setupUi()
 
     auto* jumpRow = new QHBoxLayout();
     jumpRow->setSpacing(6);
-    auto* jumpTitle = new QLabel(tr("跳转"), this);
-    jumpTitle->setObjectName(QStringLiteral("Muted"));
+    auto* jumpIcon = new QLabel(this);
+    jumpIcon->setPixmap(QIcon(QStringLiteral(":/icons/arrow-left-right.svg")).pixmap(14, 14));
+    jumpIcon->setFixedSize(14, 14);
+    jumpIcon->setToolTip(tr("按代数回退或快进"));
 
     m_jumpSpin = new QSpinBox(this);
     m_jumpSpin->setObjectName(QStringLiteral("JumpSpin"));
@@ -182,39 +204,51 @@ void ControlPanel::setupUi()
     m_jumpSpin->setSingleStep(m_jumpStep);
     m_jumpSpin->setValue(m_jumpStep);
     m_jumpSpin->setSuffix(tr(" 代"));
-    m_jumpSpin->setFixedWidth(90);
+    m_jumpSpin->setFixedWidth(80);
     m_jumpSpin->setKeyboardTracking(false);
+    m_jumpSpin->setAccessibleName(tr("跳转代数"));
     m_jumpSpin->setToolTip(tr("一次回退或快进的代数"));
     connect(m_jumpSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int) {
         updateJumpState();
     });
 
     m_rewindButton = new QPushButton(QIcon(QStringLiteral(":/icons/rewind.svg")), tr("回退"), this);
-    m_rewindButton->setMinimumWidth(0);
+    m_rewindButton->setFixedWidth(72);
+    m_rewindButton->setAccessibleName(tr("回退指定代数"));
     connect(m_rewindButton, &QPushButton::clicked, this, [this] {
         emit rewindRequested(m_jumpSpin->value());
     });
 
     m_forwardButton = new QPushButton(QIcon(QStringLiteral(":/icons/fast-forward.svg")), tr("快进"), this);
-    m_forwardButton->setMinimumWidth(0);
+    m_forwardButton->setFixedWidth(72);
+    m_forwardButton->setAccessibleName(tr("快进指定代数"));
     connect(m_forwardButton, &QPushButton::clicked, this, [this] {
         emit fastForwardRequested(m_jumpSpin->value());
     });
 
-    jumpRow->addWidget(jumpTitle);
+    jumpRow->addWidget(jumpIcon);
     jumpRow->addWidget(m_jumpSpin);
     jumpRow->addWidget(m_rewindButton);
     jumpRow->addWidget(m_forwardButton);
     root->addLayout(jumpRow);
     updateJumpState();
 
+    m_gridCheck = new QCheckBox(tr("显示网格线"), this);
+    m_gridCheck->setChecked(true);
+    m_gridCheck->setAccessibleName(tr("显示网格线"));
+    m_gridCheck->setToolTip(tr("显示或隐藏棋盘网格线（Ctrl+G）"));
+    connect(m_gridCheck, &QCheckBox::toggled, this, &ControlPanel::gridVisibilityChanged);
+    root->addWidget(m_gridCheck);
+
     auto* patternGroup = new QGroupBox(tr("图案"), this);
     auto* patternLayout = new QVBoxLayout(patternGroup);
-    patternLayout->setContentsMargins(12, 10, 12, 12);
+    patternLayout->setContentsMargins(10, 8, 10, 8);
     patternLayout->setSpacing(6);
     m_patternCombo = new QComboBox(patternGroup);
     m_patternCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     m_patternCombo->setMinimumContentsLength(8);
+    m_patternCombo->setAccessibleName(tr("图案"));
+    m_patternCombo->setToolTip(tr("选择要放置的图案；选择画笔可回到直接绘制"));
     connect(m_patternCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
         emit patternChanged(m_patternCombo->currentData().toInt());
     });
@@ -223,14 +257,14 @@ void ControlPanel::setupUi()
     m_patternText = new QLabel(patternGroup);
     m_patternText->setObjectName(QStringLiteral("Muted"));
     m_patternText->setWordWrap(true);
-    m_patternText->setMinimumHeight(40);
+    m_patternText->setMinimumHeight(32);
     m_patternText->setAlignment(Qt::AlignTop | Qt::AlignLeft);
     patternLayout->addWidget(m_patternText);
     root->addWidget(patternGroup);
 
     auto* ruleGroup = new QGroupBox(tr("规则与边界"), this);
     auto* ruleLayout = new QHBoxLayout(ruleGroup);
-    ruleLayout->setContentsMargins(12, 10, 12, 12);
+    ruleLayout->setContentsMargins(10, 8, 10, 8);
     ruleLayout->setSpacing(10);
 
     auto* ruleColumn = new QVBoxLayout();
@@ -240,6 +274,8 @@ void ControlPanel::setupUi()
     m_ruleCombo = new QComboBox(ruleGroup);
     m_ruleCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     m_ruleCombo->setMinimumContentsLength(4);
+    m_ruleCombo->setAccessibleName(tr("规则"));
+    m_ruleCombo->setToolTip(tr("选择生命游戏规则"));
     connect(m_ruleCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
         if (!m_syncing)
         {
@@ -256,6 +292,7 @@ void ControlPanel::setupUi()
     m_boundaryCombo = new QComboBox(ruleGroup);
     m_boundaryCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     m_boundaryCombo->setMinimumContentsLength(4);
+    m_boundaryCombo->setAccessibleName(tr("边界"));
     m_boundaryCombo->setToolTip(tr("死亡边界：越界视为空；环绕边界：上下左右相连"));
     connect(m_boundaryCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
         if (!m_syncing)
@@ -272,7 +309,7 @@ void ControlPanel::setupUi()
 
     auto* sizeGroup = new QGroupBox(tr("棋盘尺寸"), this);
     auto* sizeLayout = new QHBoxLayout(sizeGroup);
-    sizeLayout->setContentsMargins(12, 10, 12, 12);
+    sizeLayout->setContentsMargins(10, 8, 10, 8);
     sizeLayout->setSpacing(6);
 
     m_widthSpin = new QSpinBox(sizeGroup);
@@ -282,6 +319,7 @@ void ControlPanel::setupUi()
     m_widthSpin->setValue(domain::kDefaultBoardWidth);
     m_widthSpin->setFixedWidth(62);
     m_widthSpin->setKeyboardTracking(false);
+    m_widthSpin->setAccessibleName(tr("棋盘宽度"));
     m_widthSpin->setToolTip(tr("列数（20 - 400）"));
 
     m_heightSpin = new QSpinBox(sizeGroup);
@@ -291,28 +329,26 @@ void ControlPanel::setupUi()
     m_heightSpin->setValue(domain::kDefaultBoardHeight);
     m_heightSpin->setFixedWidth(62);
     m_heightSpin->setKeyboardTracking(false);
+    m_heightSpin->setAccessibleName(tr("棋盘高度"));
     m_heightSpin->setToolTip(tr("行数（20 - 400）"));
 
     auto* times = new QLabel(QStringLiteral("×"), sizeGroup);
     times->setObjectName(QStringLiteral("Muted"));
 
-    auto* applyButton = new QPushButton(tr("应用"), sizeGroup);
-    applyButton->setFixedWidth(52);
-    applyButton->setToolTip(tr("按新尺寸重建空棋盘"));
-    connect(applyButton, &QPushButton::clicked, this, [this] {
+    m_applySizeButton = new QPushButton(QIcon(QStringLiteral(":/icons/check.svg")), tr("应用"), sizeGroup);
+    m_applySizeButton->setObjectName(QStringLiteral("ApplySizeButton"));
+    m_applySizeButton->setFixedWidth(68);
+    m_applySizeButton->setAccessibleName(tr("应用棋盘尺寸"));
+    m_applySizeButton->setToolTip(tr("按新尺寸重建空棋盘（原棋盘会被清空）"));
+    connect(m_applySizeButton, &QPushButton::clicked, this, [this] {
         emit resizeRequested(m_widthSpin->value(), m_heightSpin->value());
     });
 
     sizeLayout->addWidget(m_widthSpin, 1);
     sizeLayout->addWidget(times);
     sizeLayout->addWidget(m_heightSpin, 1);
-    sizeLayout->addWidget(applyButton);
+    sizeLayout->addWidget(m_applySizeButton);
     root->addWidget(sizeGroup);
-
-    m_gridCheck = new QCheckBox(tr("显示网格线"), this);
-    m_gridCheck->setChecked(true);
-    connect(m_gridCheck, &QCheckBox::toggled, this, &ControlPanel::gridVisibilityChanged);
-    root->addWidget(m_gridCheck);
 
     root->addStretch(1);
 

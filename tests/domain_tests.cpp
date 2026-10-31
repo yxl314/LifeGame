@@ -67,39 +67,37 @@ void placePattern(lifegame::domain::Grid* board,
 void testRules()
 {
     using lifegame::domain::Rule;
+    using lifegame::domain::RuleParseError;
 
-    const auto conway = Rule::fromNotation("B3/S23");
-    CHECK(conway.has_value());
-    if (conway)
-    {
-        CHECK(conway->births(3));
-        CHECK(!conway->births(2));
-        CHECK(conway->survives(2));
-        CHECK(conway->survives(3));
-        CHECK(!conway->survives(4));
-        CHECK(conway->notation() == "B3/S23");
-    }
+    const auto conway = Rule::parse("B3/S23");
+    CHECK(conway.error == RuleParseError::None);
+    CHECK(conway.rule.births(3));
+    CHECK(!conway.rule.births(2));
+    CHECK(conway.rule.survives(2));
+    CHECK(conway.rule.survives(3));
+    CHECK(!conway.rule.survives(4));
+    CHECK(conway.rule.notation() == "B3/S23");
 
-    const auto legacy = Rule::fromNotation(" 3 / 23 ");
-    CHECK(legacy.has_value());
-    CHECK(legacy && legacy->notation() == "B3/S23");
+    const auto legacy = Rule::parse(" 3 / 23 ");
+    CHECK(legacy.error == RuleParseError::None);
+    CHECK(legacy.rule.notation() == "B3/S23");
 
-    const auto lowercase = Rule::fromNotation("b36/s23");
-    CHECK(lowercase.has_value());
-    CHECK(lowercase && lowercase->notation() == "B36/S23");
+    const auto lowercase = Rule::parse("b36/s23");
+    CHECK(lowercase.error == RuleParseError::None);
+    CHECK(lowercase.rule.notation() == "B36/S23");
 
-    const auto emptySurvival = Rule::fromNotation("B2/S");
-    CHECK(emptySurvival.has_value());
-    CHECK(emptySurvival && emptySurvival->notation() == "B2/S");
+    const auto emptySurvival = Rule::parse("B2/S");
+    CHECK(emptySurvival.error == RuleParseError::None);
+    CHECK(emptySurvival.rule.notation() == "B2/S");
 
-    const auto emptyBirth = Rule::fromNotation("B/S23");
-    CHECK(emptyBirth.has_value());
-    CHECK(emptyBirth && emptyBirth->notation() == "B/S23");
+    const auto emptyBirth = Rule::parse("B/S23");
+    CHECK(emptyBirth.error == RuleParseError::None);
+    CHECK(emptyBirth.rule.notation() == "B/S23");
 
-    CHECK(!Rule::fromNotation("not-a-rule").has_value());
-    CHECK(!Rule::fromNotation("B9/S23").has_value());
-    CHECK(!Rule::fromNotation("B3/S23/x").has_value());
-    CHECK(!Rule::fromNotation("").has_value());
+    CHECK(Rule::parse("not-a-rule").error == RuleParseError::MissingSeparator);
+    CHECK(Rule::parse("B9/S23").error == RuleParseError::InvalidCharacter);
+    CHECK(Rule::parse("B3/S23/x").error == RuleParseError::InvalidCharacter);
+    CHECK(Rule::parse("").error == RuleParseError::Empty);
 
     const auto& presets = lifegame::domain::builtinRulePresets();
     CHECK(presets.size() == 5);
@@ -337,6 +335,23 @@ lifegame::domain::RleDecodeResult decode(const std::string& text)
     return lifegame::domain::decodeRle(text);
 }
 
+void testPatternInvariant()
+{
+    using lifegame::domain::Pattern;
+
+    Pattern broken;
+    broken.id = "broken";
+    broken.width = 10;
+    broken.height = 10;
+    broken.cells.assign(1, 1);
+    CHECK(!broken.isConsistent());
+    CHECK(!broken.alive(9, 9)); // must not read out of bounds
+
+    broken.cells.assign(100, 1);
+    CHECK(broken.isConsistent());
+    CHECK(broken.alive(9, 9));
+}
+
 void testRleDecode()
 {
     using lifegame::domain::RleError;
@@ -368,8 +383,18 @@ void testRleDecode()
 
     CHECK(decode("").error.code == RleError::EmptyBody);
     CHECK(decode("#N only comments\n").error.code == RleError::EmptyBody);
-    CHECK(decode("x = 3, y = 3\nbo?$!").error.code == RleError::InvalidCharacter);
+    const auto invalidCharacter = decode("x = 3, y = 3\nbo?$!");
+    CHECK(invalidCharacter.error.code == RleError::InvalidCharacter);
+    CHECK(invalidCharacter.error.line == 2);
+    CHECK(invalidCharacter.error.column == 3);
     CHECK(decode("x = 3, y = 3\nbo$!").error.code == RleError::None);
+    CHECK(decode("x = 3, y = 3\nbo$").error.code == RleError::MissingTerminator);
+    CHECK(decode("x = 3, y = 3\nbo").error.code == RleError::MissingTerminator);
+
+    const auto commentOffset = decode("#C one\n#C two\nx = 3, y = 3\nbo?\n!");
+    CHECK(commentOffset.error.code == RleError::InvalidCharacter);
+    CHECK(commentOffset.error.line == 4);
+    CHECK(commentOffset.error.column == 3);
     CHECK(decode("x = 3, y = 3, rule = nonsense\nbo$!").error.code == RleError::InvalidRule);
     CHECK(decode("x = 999999999, y = 3\nbo$!").error.code == RleError::InvalidHeader);
     CHECK(decode("x = 401, y = 3\nbo$!").error.code == RleError::TooLarge);
@@ -498,6 +523,7 @@ int main()
     testRandomize();
     testRowSlicing();
     testPatternLibrary();
+    testPatternInvariant();
     testRleDecode();
     testRleRoundTrip();
     testHistory();

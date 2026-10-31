@@ -1,13 +1,23 @@
 #pragma once
 
+#include <QString>
+
 #include <memory>
+
+#include "service/session_state.h"
+#include "service/settings_error.h"
 
 class QSettings;
 
 namespace lifegame::service
 {
 
-struct SessionState;
+struct SettingsLoadResult
+{
+    SessionState state;
+    SettingsError error = SettingsError::None;
+    QString detail;
+};
 
 /// QSettings-backed persistence. No UI, no model state machine.
 class SettingsStore
@@ -19,8 +29,8 @@ public:
     SettingsStore(const SettingsStore&) = delete;
     SettingsStore& operator=(const SettingsStore&) = delete;
 
-    SessionState load() const;
-    void save(const SessionState& state);
+    SettingsLoadResult load() const;
+    SettingsError save(const SessionState& state, QString* detail = nullptr);
 
 private:
     std::unique_ptr<QSettings> m_settings;

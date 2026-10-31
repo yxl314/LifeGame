@@ -12,8 +12,18 @@ bool Pattern::alive(int row, int col) const
     {
         return false;
     }
-    return cells[static_cast<std::size_t>(row) * static_cast<std::size_t>(width) +
-                 static_cast<std::size_t>(col)] != kDead;
+    const std::size_t index = static_cast<std::size_t>(row) * static_cast<std::size_t>(width) +
+                              static_cast<std::size_t>(col);
+    return index < cells.size() && cells[index] != kDead;
+}
+
+bool Pattern::isConsistent() const
+{
+    if (width < 0 || height < 0)
+    {
+        return false;
+    }
+    return cells.size() == static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
 }
 
 int Pattern::population() const

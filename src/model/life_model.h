@@ -17,6 +17,7 @@
 #include "domain/rle.h"
 #include "domain/rule.h"
 #include "model/app_settings.h"
+#include "model/command_result.h"
 #include "model/jump_info.h"
 #include "model/life_stats.h"
 #include "model/simulation_engine.h"
@@ -62,33 +63,37 @@ public:
     std::string toRle(std::string_view title = {}) const;
 
     // ---- commands (controllers only) ----
+    /// Paint-path operations return "did anything change"; they have no
+    /// user-facing failure reason beyond out-of-bounds/no-change.
     bool setCell(int row, int col, bool alive);
     bool toggleCell(int row, int col);
 
     /// Batch edit used by drag painting; emits at most one pair of signals.
     bool setCells(const std::vector<std::pair<int, int>>& cells, bool alive);
-    bool placePattern(const domain::Pattern& pattern, int centerRow, int centerCol);
-    bool clear();
-    bool randomize(int densityPercent);
-    bool resizeBoard(int width, int height);
-    bool setRule(const domain::Rule& rule);
-    bool setRuleByNotation(std::string_view notation);
-    bool setBoundary(domain::Boundary boundary);
-    bool setSnapshotInterval(int generations);
-    bool setGeneration(int generation);
-    bool loadDocument(const domain::DecodedDocument& document);
+    CommandResult placePattern(const domain::Pattern& pattern, int centerRow, int centerCol);
+    CommandResult clear();
+    CommandResult randomize(int densityPercent);
+    CommandResult resizeBoard(int width, int height);
+    CommandResult setRule(const domain::Rule& rule);
+    CommandResult setRuleByNotation(std::string_view notation);
+    CommandResult setBoundary(domain::Boundary boundary);
+    CommandResult setSnapshotInterval(int generations);
+
+    /// Restore-only state forging (used by SessionController).
+    CommandResult setGeneration(int generation);
+    CommandResult loadDocument(const domain::DecodedDocument& document);
 
     /// Evolve one generation synchronously (single-step).
-    void step();
+    CommandResult step();
 
-    /// Request one asynchronous generation; ignored while busy or paused.
-    void requestStep();
+    /// Request one asynchronous generation; returns Busy/NotRunning/Success.
+    CommandResult requestStep();
 
-    bool setRunning(bool running);
-    bool toggleRunning();
+    CommandResult setRunning(bool running);
+    CommandResult toggleRunning();
 
-    /// Jump forward or rewind. Returns false when invalid or already jumping.
-    bool startJump(int targetGeneration);
+    /// Jump forward (positive) or rewind (negative) by replaying snapshots.
+    CommandResult startJump(int targetGeneration);
     void cancelJump();
 
 signals:
@@ -98,14 +103,17 @@ signals:
     void runningChanged(bool running);
     void configurationChanged();
     void simulationStalled(lifegame::model::StallReason reason);
+    void stepFailed(lifegame::model::CommandResult reason);
 
     void jumpStarted(const lifegame::model::JumpInfo& info);
     void jumpProgress(int done);
     void jumpFinished(int generation);
     void jumpCancelled();
+    void jumpFailed(lifegame::model::CommandResult reason);
 
 private slots:
     void onStepReady(quint64 requestId);
+    void onStepFailed(lifegame::model::CommandResult reason);
     void onJumpFinished();
     void reportJumpProgress(int done);
 
@@ -116,6 +124,7 @@ private:
         std::vector<domain::History::Snapshot> snapshots;
         int generation = 0;
         bool cancelled = false;
+        CommandResult error = CommandResult::Success;
     };
 
     void pauseForEdit();
@@ -126,7 +135,7 @@ private:
     void notifyBoardChanged();
     void notifyStatusChanged();
     void applyStep(domain::Grid&& next);
-    bool replaceBoard(std::unique_ptr<domain::Grid> board, int generation);
+    CommandResult replaceBoard(std::unique_ptr<domain::Grid> board, int generation);
     bool canMutate() const;
 
     domain::Grid m_board;

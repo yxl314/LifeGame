@@ -24,6 +24,7 @@ private:
     QSpinBox* m_jumpStepSpin = nullptr;
     QSpinBox* m_sizeStepSpin = nullptr;
     QSpinBox* m_snapshotSpin = nullptr;
+    model::AppSettings m_base;
 };
 
 } // namespace lifegame::view

@@ -1,4 +1,7 @@
 #include <QApplication>
+#include <QFile>
+#include <QFileInfo>
+#include <QImage>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QtTest>
@@ -9,6 +12,7 @@
 #include <vector>
 
 #include "controller/board_controller.h"
+#include "controller/file_controller.h"
 #include "controller/jump_controller.h"
 #include "controller/line_raster.h"
 #include "controller/session_controller.h"
@@ -16,6 +20,10 @@
 #include "domain/pattern_library.h"
 #include "domain/rle.h"
 #include "model/life_model.h"
+
+#define VERIFY_OK(expression) QVERIFY(lifegame::model::succeeded(expression))
+#define VERIFY_FAIL(expression) QVERIFY(lifegame::model::failed(expression))
+#include "service/image_file_service.h"
 #include "service/rle_file_service.h"
 #include "service/session_state.h"
 #include "service/settings_store.h"
@@ -87,7 +95,7 @@ void place(lifegame::model::LifeModel* model, const std::string& id, int row, in
 {
     const auto* pattern = lifegame::domain::findBuiltinPattern(id);
     QVERIFY(pattern != nullptr);
-    QVERIFY(model->placePattern(*pattern, row, col));
+    VERIFY_OK(model->placePattern(*pattern, row, col));
 }
 
 } // namespace
@@ -103,6 +111,9 @@ private slots:
     void jumpControllerReportsProgressAndCancel();
     void settingsStoreRoundTrip();
     void rleFileService();
+    void imageFileService();
+    void fileControllerPaths();
+    void settingsCorruptData();
     void sessionControllerRoundTrip();
 };
 
@@ -135,7 +146,7 @@ void ControllerTests::lineRaster()
 void ControllerTests::boardControllerEditsAndStamps()
 {
     lifegame::model::LifeModel model;
-    QVERIFY(model.resizeBoard(20, 20));
+    VERIFY_OK(model.resizeBoard(20, 20));
     lifegame::view::BoardView view;
     view.setModel(&model);
     lifegame::view::ControlPanel panel;
@@ -168,6 +179,19 @@ void ControllerTests::boardControllerEditsAndStamps()
     QCOMPARE(panel.isGridVisible(), false);
     QCOMPARE(controller.gridVisible(), false);
 
+    // The side panel must actually be wired, not just emit signals.
+    emit panel.resizeRequested(30, 25);
+    QCOMPARE(model.width(), 30);
+    QCOMPARE(model.height(), 25);
+    emit panel.clearRequested();
+    QCOMPARE(model.stats().population, 0);
+    panel.setRandomDensity(5);
+    emit panel.randomizeRequested(90); // must honor the signal argument, not the spin value
+    QVERIFY(model.stats().population > 600); // 30x25 board, ~90% alive
+    emit panel.gridVisibilityChanged(true);
+    QCOMPARE(view.gridVisible(), true);
+    QCOMPARE(panel.isGridVisible(), true);
+
     controller.loadDemo();
     QVERIFY(model.stats().population > 0);
 }
@@ -175,7 +199,7 @@ void ControllerTests::boardControllerEditsAndStamps()
 void ControllerTests::simulationControllerDrivesModel()
 {
     lifegame::model::LifeModel model;
-    QVERIFY(model.resizeBoard(20, 20));
+    VERIFY_OK(model.resizeBoard(20, 20));
     QVERIFY(model.setCell(5, 5, true));
     lifegame::view::ControlPanel panel;
     FakeMessages messages;
@@ -207,7 +231,7 @@ void ControllerTests::simulationControllerDrivesModel()
 void ControllerTests::jumpControllerReportsProgressAndCancel()
 {
     lifegame::model::LifeModel model;
-    QVERIFY(model.resizeBoard(60, 40));
+    VERIFY_OK(model.resizeBoard(60, 40));
     place(&model, "glider", 20, 20);
 
     lifegame::view::ControlPanel panel;
@@ -224,6 +248,14 @@ void ControllerTests::jumpControllerReportsProgressAndCancel()
     QCOMPARE(model.stats().generation, 120);
     QVERIFY(state.shown);
     QVERIFY(state.closed);
+
+    // The panel rewind signal carries a positive count; the controller must negate it.
+    emit panel.rewindRequested(20);
+    QTRY_VERIFY(!model.isJumping());
+    QCOMPARE(model.stats().generation, 100);
+    emit panel.fastForwardRequested(20);
+    QTRY_VERIFY(!model.isJumping());
+    QCOMPARE(model.stats().generation, 120);
 
     controller.jumpBy(100000);
     QVERIFY(state.shown);
@@ -256,24 +288,26 @@ void ControllerTests::settingsStoreRoundTrip()
     {
         auto settings = std::make_unique<QSettings>(path, QSettings::IniFormat);
         lifegame::service::SettingsStore store(std::move(settings));
-        store.save(state);
+        QCOMPARE(store.save(state), lifegame::service::SettingsError::None);
     }
 
     auto settings = std::make_unique<QSettings>(path, QSettings::IniFormat);
     lifegame::service::SettingsStore store(std::move(settings));
-    const lifegame::service::SessionState loaded = store.load();
+    const lifegame::service::SettingsLoadResult loaded = store.load();
+    QCOMPARE(loaded.error, lifegame::service::SettingsError::None);
 
-    QCOMPARE(loaded.settings.jumpStep, 500);
-    QCOMPARE(loaded.settings.sizeStep, 10);
-    QCOMPARE(loaded.settings.snapshotInterval, 250);
-    QCOMPARE(loaded.settings.density, 55);
-    QCOMPARE(loaded.settings.speed, 42);
-    QCOMPARE(loaded.settings.gridVisible, false);
-    QCOMPARE(loaded.boardRle, state.boardRle);
-    QCOMPARE(loaded.ruleNotation, state.ruleNotation);
-    QCOMPARE(loaded.boundary, 1);
-    QCOMPARE(loaded.generation, 77);
-    QCOMPARE(loaded.windowGeometry, state.windowGeometry);
+    const lifegame::service::SessionState& value = loaded.state;
+    QCOMPARE(value.settings.jumpStep, 500);
+    QCOMPARE(value.settings.sizeStep, 10);
+    QCOMPARE(value.settings.snapshotInterval, 250);
+    QCOMPARE(value.settings.density, 55);
+    QCOMPARE(value.settings.speed, 42);
+    QCOMPARE(value.settings.gridVisible, false);
+    QCOMPARE(value.boardRle, state.boardRle);
+    QCOMPARE(value.ruleNotation, state.ruleNotation);
+    QCOMPARE(value.boundary, 1);
+    QCOMPARE(value.generation, 77);
+    QCOMPARE(value.windowGeometry, state.windowGeometry);
 }
 
 void ControllerTests::rleFileService()
@@ -284,12 +318,12 @@ void ControllerTests::rleFileService()
     const QString text = QStringLiteral("#N Glider\nx = 3, y = 3, rule = B3/S23\nbob$2bo$3o!\n");
 
     lifegame::service::RleFileService service;
-    QString error;
-    QVERIFY(service.write(path, text, &error));
-    QVERIFY(error.isEmpty());
+    QString detail;
+    QCOMPARE(service.write(path, text, &detail), lifegame::service::FileError::None);
+    QVERIFY(detail.isEmpty());
 
     const lifegame::service::RleReadResult result = service.read(path);
-    QVERIFY(result.systemError.isEmpty());
+    QCOMPARE(result.error, lifegame::service::FileError::None);
     QCOMPARE(result.decodeError.code, lifegame::domain::RleError::None);
     QVERIFY(result.document.has_value());
     if (result.document)
@@ -299,8 +333,104 @@ void ControllerTests::rleFileService()
     }
 
     const lifegame::service::RleReadResult missing = service.read(directory.path() + QStringLiteral("/nope.rle"));
-    QVERIFY(!missing.systemError.isEmpty());
+    QCOMPARE(missing.error, lifegame::service::FileError::OpenFailed);
     QVERIFY(!missing.document.has_value());
+
+    const QString brokenPath = directory.path() + QStringLiteral("/broken.rle");
+    QCOMPARE(service.write(brokenPath, QStringLiteral("x = 3, y = 3\nbo?!"), &detail),
+             lifegame::service::FileError::None);
+    const lifegame::service::RleReadResult broken = service.read(brokenPath);
+    QCOMPARE(broken.error, lifegame::service::FileError::DecodeFailed);
+    QCOMPARE(broken.decodeError.code, lifegame::domain::RleError::InvalidCharacter);
+
+    const QString hugePath = directory.path() + QStringLiteral("/huge.rle");
+    QFile huge(hugePath);
+    QVERIFY(huge.open(QIODevice::WriteOnly));
+    QCOMPARE(huge.write(QByteArray(8 * 1024 * 1024 + 1, 'x')), qint64(8 * 1024 * 1024 + 1));
+    huge.close();
+    QCOMPARE(service.read(hugePath).error, lifegame::service::FileError::TooLarge);
+
+    QCOMPARE(service.write(directory.path(), text, &detail), lifegame::service::FileError::OpenFailed);
+}
+
+void ControllerTests::imageFileService()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+
+    QImage image(32, 24, QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::green);
+
+    lifegame::service::ImageFileService service;
+    const QString path = directory.path() + QStringLiteral("/frame.png");
+    QString detail;
+    QCOMPARE(service.savePng(image, path, &detail), lifegame::service::FileError::None);
+    QVERIFY(QFileInfo::exists(path));
+
+    QCOMPARE(service.savePng(QImage(), path, &detail), lifegame::service::FileError::NullImage);
+    QCOMPARE(service.savePng(image, directory.path() + QStringLiteral("/missing/frame.png"), &detail),
+             lifegame::service::FileError::EncodeFailed);
+}
+
+void ControllerTests::fileControllerPaths()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+
+    lifegame::model::LifeModel model;
+    VERIFY_OK(model.resizeBoard(20, 20));
+    lifegame::view::BoardView view;
+    view.setModel(&model);
+    FakeMessages messages;
+    lifegame::service::RleFileService rleService;
+    lifegame::service::ImageFileService imageService;
+    lifegame::controller::FileController controller(
+        &model, &view, &messages, nullptr, &rleService, &imageService, nullptr);
+
+    const QString rlePath = directory.path() + QStringLiteral("/glider.rle");
+    QFile rle(rlePath);
+    QVERIFY(rle.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    rle.write("x = 3, y = 3\nbob$2bo$3o!\n");
+    rle.close();
+
+    const lifegame::controller::FileController::OpenResult opened = controller.openPath(rlePath);
+    QCOMPARE(opened.fileError, lifegame::service::FileError::None);
+    QCOMPARE(opened.modelResult, lifegame::model::CommandResult::Success);
+    QCOMPARE(model.stats().population, 5);
+
+    const QString savePath = directory.path() + QStringLiteral("/saved.rle");
+    QCOMPARE(controller.savePath(savePath), lifegame::service::FileError::None);
+    QVERIFY(QFileInfo::exists(savePath));
+
+    const QString imagePath = directory.path() + QStringLiteral("/board.png");
+    QCOMPARE(controller.exportPath(imagePath), lifegame::service::FileError::None);
+    QVERIFY(QFileInfo::exists(imagePath));
+
+    const QString brokenPath = directory.path() + QStringLiteral("/broken.rle");
+    QFile broken(brokenPath);
+    QVERIFY(broken.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    broken.write("x = 3, y = 3\nbo?!");
+    broken.close();
+    QCOMPARE(controller.openPath(brokenPath).fileError, lifegame::service::FileError::DecodeFailed);
+    QCOMPARE(controller.openPath(directory.path() + QStringLiteral("/missing.rle")).fileError,
+             lifegame::service::FileError::OpenFailed);
+}
+
+void ControllerTests::settingsCorruptData()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString path = directory.path() + QStringLiteral("/corrupt.ini");
+
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    file.write("[simulation]\ndensity=not-an-int\n");
+    file.close();
+
+    auto settings = std::make_unique<QSettings>(path, QSettings::IniFormat);
+    lifegame::service::SettingsStore store(std::move(settings));
+    const lifegame::service::SettingsLoadResult result = store.load();
+    QCOMPARE(result.error, lifegame::service::SettingsError::CorruptData);
 }
 
 void ControllerTests::sessionControllerRoundTrip()

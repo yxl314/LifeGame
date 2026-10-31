@@ -7,6 +7,9 @@
 #include "domain/rle.h"
 #include "model/life_model.h"
 
+#define VERIFY_OK(expression) QVERIFY(lifegame::model::succeeded(expression))
+#define VERIFY_FAIL(expression) QVERIFY(lifegame::model::failed(expression))
+
 namespace
 {
 
@@ -24,7 +27,7 @@ void place(lifegame::model::LifeModel* model, const std::string& id, int row, in
 {
     const auto* pattern = lifegame::domain::findBuiltinPattern(id);
     QVERIFY(pattern != nullptr);
-    QVERIFY(model->placePattern(*pattern, row, col));
+    VERIFY_OK(model->placePattern(*pattern, row, col));
 }
 
 } // namespace
@@ -48,6 +51,7 @@ private slots:
     void jumpCanBeCancelled();
     void loadWhileJumpingIsRejected();
     void snapshotInterval();
+    void commandResults();
 };
 
 void ModelTests::defaults()
@@ -69,7 +73,7 @@ void ModelTests::defaults()
 void ModelTests::setCellUpdatesStatsAndSignals()
 {
     lifegame::model::LifeModel model;
-    QVERIFY(model.resizeBoard(20, 20));
+    VERIFY_OK(model.resizeBoard(20, 20));
 
     QSignalSpy boardSpy(&model, &lifegame::model::LifeModel::boardChanged);
     QSignalSpy statusSpy(&model, &lifegame::model::LifeModel::statusChanged);
@@ -93,7 +97,7 @@ void ModelTests::setCellUpdatesStatsAndSignals()
     QVERIFY(model.toggleCell(10, 10)); // mutation happened: dead -> alive
     QCOMPARE(model.stats().population, 1);
 
-    QVERIFY(model.clear());
+    VERIFY_OK(model.clear());
     QCOMPARE(model.stats().population, 0);
     QCOMPARE(model.stats().generation, 0);
 }
@@ -101,9 +105,9 @@ void ModelTests::setCellUpdatesStatsAndSignals()
 void ModelTests::editingPausesSimulation()
 {
     lifegame::model::LifeModel model;
-    QVERIFY(model.resizeBoard(20, 20));
+    VERIFY_OK(model.resizeBoard(20, 20));
     QVERIFY(model.setCell(5, 5, true));
-    QVERIFY(model.setRunning(true));
+    VERIFY_OK(model.setRunning(true));
     QCOMPARE(model.isRunning(), true);
 
     QSignalSpy runningSpy(&model, &lifegame::model::LifeModel::runningChanged);
@@ -115,9 +119,9 @@ void ModelTests::editingPausesSimulation()
 void ModelTests::emptyBoardCannotStart()
 {
     lifegame::model::LifeModel model;
-    QVERIFY(model.clear());
+    VERIFY_OK(model.clear());
     QSignalSpy stalledSpy(&model, &lifegame::model::LifeModel::simulationStalled);
-    QVERIFY(!model.setRunning(true));
+    VERIFY_FAIL(model.setRunning(true));
     QCOMPARE(model.isRunning(), false);
     QCOMPARE(stalledSpy.count(), 1);
     if (!stalledSpy.isEmpty())
@@ -130,7 +134,7 @@ void ModelTests::emptyBoardCannotStart()
 void ModelTests::synchronousEvolution()
 {
     lifegame::model::LifeModel model;
-    QVERIFY(model.resizeBoard(20, 20));
+    VERIFY_OK(model.resizeBoard(20, 20));
     place(&model, "blinker", 10, 10);
     QCOMPARE(model.stats().population, 3);
 
@@ -153,13 +157,13 @@ void ModelTests::synchronousEvolution()
 void ModelTests::randomizeProducesVariation()
 {
     lifegame::model::LifeModel model;
-    QVERIFY(model.resizeBoard(30, 30));
-    QVERIFY(model.randomize(35));
+    VERIFY_OK(model.resizeBoard(30, 30));
+    VERIFY_OK(model.randomize(35));
     const QString first = rle(model);
     QVERIFY(model.stats().population > 0);
     QCOMPARE(model.stats().generation, 0);
 
-    QVERIFY(model.randomize(35));
+    VERIFY_OK(model.randomize(35));
     const QString second = rle(model);
     QVERIFY(first != second);
 }
@@ -167,7 +171,7 @@ void ModelTests::randomizeProducesVariation()
 void ModelTests::resizeAndLoadDocument()
 {
     lifegame::model::LifeModel model;
-    QVERIFY(model.resizeBoard(35, 25));
+    VERIFY_OK(model.resizeBoard(35, 25));
     place(&model, "glider", 10, 10);
     const QString saved = rle(model);
 
@@ -176,7 +180,7 @@ void ModelTests::resizeAndLoadDocument()
 
     lifegame::model::LifeModel loaded;
     QSignalSpy resizedSpy(&loaded, &lifegame::model::LifeModel::boardResized);
-    QVERIFY(loaded.loadDocument(*decoded.document));
+    VERIFY_OK(loaded.loadDocument(*decoded.document));
     QCOMPARE(loaded.width(), 35);
     QCOMPARE(loaded.height(), 25);
     QCOMPARE(loaded.stats().population, model.stats().population);
@@ -187,7 +191,7 @@ void ModelTests::resizeAndLoadDocument()
     lifegame::model::LifeModel padded;
     const auto glider = lifegame::domain::decodeRle("x = 3, y = 3\nbob$2bo$3o!");
     QVERIFY(glider.document.has_value());
-    QVERIFY(padded.loadDocument(*glider.document));
+    VERIFY_OK(padded.loadDocument(*glider.document));
     QCOMPARE(padded.width(), lifegame::domain::kMinBoardExtent);
     QCOMPARE(padded.height(), lifegame::domain::kMinBoardExtent);
     QCOMPARE(padded.stats().population, 5);
@@ -197,35 +201,35 @@ void ModelTests::resizeAndLoadDocument()
     invalid.pattern = lifegame::domain::Pattern::fromAscii("bad", {"O"});
     invalid.pattern.width = 1;
     invalid.rule = "not-a-rule";
-    QVERIFY(!padded.loadDocument(invalid));
+    VERIFY_FAIL(padded.loadDocument(invalid));
     QCOMPARE(padded.stats().population, 5);
 }
 
 void ModelTests::ruleAndBoundary()
 {
     lifegame::model::LifeModel model;
-    QVERIFY(model.resizeBoard(20, 20));
+    VERIFY_OK(model.resizeBoard(20, 20));
     QSignalSpy configSpy(&model, &lifegame::model::LifeModel::configurationChanged);
 
-    QVERIFY(model.setRuleByNotation("B36/S23"));
+    VERIFY_OK(model.setRuleByNotation("B36/S23"));
     QCOMPARE(model.rule().notation(), std::string("B36/S23"));
     QCOMPARE(configSpy.count(), 1);
-    QVERIFY(!model.setRuleByNotation("bad"));
+    VERIFY_FAIL(model.setRuleByNotation("bad"));
     QCOMPARE(configSpy.count(), 1);
 
-    QVERIFY(model.setBoundary(lifegame::domain::Boundary::Wrap));
+    VERIFY_OK(model.setBoundary(lifegame::domain::Boundary::Wrap));
     QCOMPARE(model.boundary(), lifegame::domain::Boundary::Wrap);
     QCOMPARE(configSpy.count(), 2);
-    QVERIFY(!model.setBoundary(lifegame::domain::Boundary::Wrap));
+    VERIFY_FAIL(model.setBoundary(lifegame::domain::Boundary::Wrap));
     QCOMPARE(configSpy.count(), 2);
 }
 
 void ModelTests::asyncStep()
 {
     lifegame::model::LifeModel model;
-    QVERIFY(model.resizeBoard(20, 20));
+    VERIFY_OK(model.resizeBoard(20, 20));
     place(&model, "glider", 10, 10);
-    QVERIFY(model.setRunning(true));
+    VERIFY_OK(model.setRunning(true));
 
     QSignalSpy boardSpy(&model, &lifegame::model::LifeModel::boardChanged);
     model.requestStep();
@@ -233,7 +237,7 @@ void ModelTests::asyncStep()
     QTRY_COMPARE(model.stats().generation, 1);
     QCOMPARE(model.isRunning(), true);
 
-    QVERIFY(model.setRunning(false));
+    VERIFY_OK(model.setRunning(false));
     const int generation = model.stats().generation;
     model.requestStep();
     QTest::qWait(50);
@@ -243,9 +247,9 @@ void ModelTests::asyncStep()
 void ModelTests::largeAsyncStep()
 {
     lifegame::model::LifeModel model;
-    QVERIFY(model.resizeBoard(400, 400));
-    QVERIFY(model.randomize(30));
-    QVERIFY(model.setRunning(true));
+    VERIFY_OK(model.resizeBoard(400, 400));
+    VERIFY_OK(model.randomize(30));
+    VERIFY_OK(model.setRunning(true));
 
     QSignalSpy boardSpy(&model, &lifegame::model::LifeModel::boardChanged);
     model.requestStep();
@@ -259,7 +263,7 @@ void ModelTests::largeAsyncStep()
 void ModelTests::jumpForwardAndBackward()
 {
     lifegame::model::LifeModel reference;
-    QVERIFY(reference.resizeBoard(60, 40));
+    VERIFY_OK(reference.resizeBoard(60, 40));
     place(&reference, "glider", 20, 20);
     for (int i = 0; i < 250; ++i)
     {
@@ -267,15 +271,15 @@ void ModelTests::jumpForwardAndBackward()
     }
 
     lifegame::model::LifeModel model;
-    QVERIFY(model.resizeBoard(60, 40));
+    VERIFY_OK(model.resizeBoard(60, 40));
     place(&model, "glider", 20, 20);
-    QVERIFY(model.setRunning(true));
+    VERIFY_OK(model.setRunning(true));
 
     QSignalSpy startedSpy(&model, &lifegame::model::LifeModel::jumpStarted);
     QSignalSpy finishedSpy(&model, &lifegame::model::LifeModel::jumpFinished);
     QSignalSpy progressSpy(&model, &lifegame::model::LifeModel::jumpProgress);
 
-    QVERIFY(model.startJump(250));
+    VERIFY_OK(model.startJump(250));
     QCOMPARE(model.isRunning(), false);
     QCOMPARE(model.isJumping(), true);
     QVERIFY(waitFor(finishedSpy, 8000));
@@ -286,12 +290,12 @@ void ModelTests::jumpForwardAndBackward()
     QVERIFY(progressSpy.count() >= 1);
 
     finishedSpy.clear();
-    QVERIFY(model.startJump(120));
+    VERIFY_OK(model.startJump(120));
     QVERIFY(waitFor(finishedSpy, 5000));
     QCOMPARE(model.stats().generation, 120);
 
     lifegame::model::LifeModel reference120;
-    QVERIFY(reference120.resizeBoard(60, 40));
+    VERIFY_OK(reference120.resizeBoard(60, 40));
     place(&reference120, "glider", 20, 20);
     for (int i = 0; i < 120; ++i)
     {
@@ -300,25 +304,25 @@ void ModelTests::jumpForwardAndBackward()
     QCOMPARE(rle(model), rle(reference120));
 
     finishedSpy.clear();
-    QVERIFY(model.startJump(0));
+    VERIFY_OK(model.startJump(0));
     QVERIFY(waitFor(finishedSpy, 5000));
     QCOMPARE(model.stats().generation, 0);
     QCOMPARE(model.oldestGeneration(), 0);
 
-    QVERIFY(!model.startJump(-1));
-    QVERIFY(!model.startJump(0));
+    VERIFY_FAIL(model.startJump(-1));
+    VERIFY_FAIL(model.startJump(0));
 }
 
 void ModelTests::jumpCanBeCancelled()
 {
     lifegame::model::LifeModel model;
-    QVERIFY(model.resizeBoard(60, 40));
+    VERIFY_OK(model.resizeBoard(60, 40));
     place(&model, "glider", 20, 20);
 
     QSignalSpy cancelledSpy(&model, &lifegame::model::LifeModel::jumpCancelled);
     QSignalSpy finishedSpy(&model, &lifegame::model::LifeModel::jumpFinished);
     const QString before = rle(model);
-    QVERIFY(model.startJump(200000));
+    VERIFY_OK(model.startJump(200000));
     model.cancelJump();
     QVERIFY(waitFor(cancelledSpy, 8000));
     QCOMPARE(model.isJumping(), false);
@@ -330,16 +334,16 @@ void ModelTests::jumpCanBeCancelled()
 void ModelTests::loadWhileJumpingIsRejected()
 {
     lifegame::model::LifeModel model;
-    QVERIFY(model.resizeBoard(60, 40));
+    VERIFY_OK(model.resizeBoard(60, 40));
     place(&model, "glider", 20, 20);
 
     const auto document = lifegame::domain::decodeRle("x = 3, y = 3, rule = B36/S23\nbob$2bo$3o!");
     QVERIFY(document.document.has_value());
 
     QSignalSpy finishedSpy(&model, &lifegame::model::LifeModel::jumpFinished);
-    QVERIFY(model.startJump(5000));
+    VERIFY_OK(model.startJump(5000));
     QCOMPARE(model.rule().notation(), std::string("B3/S23"));
-    QVERIFY(!model.loadDocument(*document.document));
+    VERIFY_FAIL(model.loadDocument(*document.document));
     QCOMPARE(model.rule().notation(), std::string("B3/S23"));
     QCOMPARE(model.stats().population, 5);
 
@@ -351,15 +355,78 @@ void ModelTests::loadWhileJumpingIsRejected()
 void ModelTests::snapshotInterval()
 {
     lifegame::model::LifeModel model;
-    QVERIFY(model.resizeBoard(20, 20));
+    VERIFY_OK(model.resizeBoard(20, 20));
 
-    QVERIFY(model.setSnapshotInterval(50));
+    VERIFY_OK(model.setSnapshotInterval(50));
     QCOMPARE(model.snapshotInterval(), 50);
-    QVERIFY(!model.setSnapshotInterval(50));
-    QVERIFY(model.setSnapshotInterval(1)); // clamped to the minimum
+    VERIFY_FAIL(model.setSnapshotInterval(50));
+    VERIFY_OK(model.setSnapshotInterval(1)); // clamped to the minimum
     QCOMPARE(model.snapshotInterval(), lifegame::model::limits::kSnapshotIntervalMin);
-    QVERIFY(model.setSnapshotInterval(5000)); // clamped to the maximum
+    VERIFY_OK(model.setSnapshotInterval(5000)); // clamped to the maximum
     QCOMPARE(model.snapshotInterval(), lifegame::model::limits::kSnapshotIntervalMax);
+}
+
+void ModelTests::commandResults()
+{
+    using lifegame::model::CommandResult;
+
+    lifegame::model::LifeModel model;
+    QCOMPARE(model.resizeBoard(20, 20), CommandResult::Success);
+    QCOMPARE(model.resizeBoard(0, 0), CommandResult::Adjusted);
+    QCOMPARE(model.width(), 20);
+    QCOMPARE(model.height(), 20);
+
+    QCOMPARE(model.setRuleByNotation("bad"), CommandResult::InvalidRule);
+    QCOMPARE(model.setRule(model.rule()), CommandResult::NoChange);
+    QCOMPARE(model.setBoundary(model.boundary()), CommandResult::NoChange);
+    QCOMPARE(model.setSnapshotInterval(model.snapshotInterval()), CommandResult::NoChange);
+    QCOMPARE(model.setGeneration(model.stats().generation), CommandResult::NoChange);
+    QCOMPARE(model.setRunning(false), CommandResult::NoChange);
+    QCOMPARE(model.setRunning(true), CommandResult::EmptyBoard);
+    QCOMPARE(model.requestStep(), CommandResult::NotRunning);
+
+    QCOMPARE(model.randomize(30), CommandResult::Success);
+    QCOMPARE(model.setRunning(true), CommandResult::Success);
+    QCOMPARE(model.setRunning(false), CommandResult::Success);
+
+    const auto* glider = lifegame::domain::findBuiltinPattern("glider");
+    QVERIFY(glider != nullptr);
+    QCOMPARE(model.placePattern(*glider, 0, 0), CommandResult::Clipped);
+
+    lifegame::domain::Pattern empty;
+    QCOMPARE(model.placePattern(empty, 0, 0), CommandResult::InvalidPattern);
+
+    lifegame::domain::Pattern inconsistent;
+    inconsistent.width = 10;
+    inconsistent.height = 10;
+    inconsistent.cells.assign(1, 1);
+    QCOMPARE(model.placePattern(inconsistent, 0, 0), CommandResult::InvalidPattern);
+
+    lifegame::domain::DecodedDocument invalidRule;
+    invalidRule.pattern = lifegame::domain::Pattern::fromAscii("one", {"O"});
+    invalidRule.rule = "not-a-rule";
+    QCOMPARE(model.loadDocument(invalidRule), CommandResult::InvalidRule);
+
+    lifegame::domain::DecodedDocument tooLarge;
+    tooLarge.pattern = lifegame::domain::Pattern::fromAscii("wide", {std::string(401, 'O')});
+    QCOMPARE(model.loadDocument(tooLarge), CommandResult::TooLarge);
+
+    QCOMPARE(model.clear(), CommandResult::Success);
+    QVERIFY(model.setCell(1, 1, true));
+    QCOMPARE(model.resizeBoard(20, 20), CommandResult::Success);
+    QCOMPARE(model.stats().population, 0); // same-size Apply deliberately resets the board
+
+    QCOMPARE(model.clear(), CommandResult::Success);
+    QCOMPARE(model.startJump(-1), CommandResult::InvalidTarget);
+    QCOMPARE(model.startJump(model.stats().generation), CommandResult::InvalidTarget);
+    QCOMPARE(model.setGeneration(10), CommandResult::Success);
+    QCOMPARE(model.startJump(5), CommandResult::NoHistory);
+
+    QCOMPARE(model.startJump(100), CommandResult::Success);
+    QCOMPARE(model.step(), CommandResult::Busy);
+    QCOMPARE(model.clear(), CommandResult::Busy);
+    model.cancelJump();
+    QTRY_VERIFY(!model.isJumping());
 }
 
 QTEST_GUILESS_MAIN(ModelTests)

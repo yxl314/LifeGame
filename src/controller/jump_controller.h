@@ -4,6 +4,7 @@
 
 #include <memory>
 
+#include "model/command_result.h"
 #include "view/interfaces.h"
 
 namespace lifegame::model
@@ -38,10 +39,12 @@ public slots:
     void jumpBy(int delta);
 
 private slots:
+    void rewindBy(int generations);
     void onJumpStarted(const lifegame::model::JumpInfo& info);
     void onJumpProgress(int done);
     void onJumpFinished(int generation);
     void onJumpCancelled();
+    void onJumpFailed(lifegame::model::CommandResult reason);
 
 private:
     void closeProgress();

@@ -1,5 +1,7 @@
 #include "controller/simulation_controller.h"
 
+#include "controller/error_text.h"
+
 #include <QAction>
 #include <QIcon>
 #include <QTimer>
@@ -56,6 +58,12 @@ SimulationController::SimulationController(model::LifeModel* model,
     connect(m_panel, &view::ControlPanel::speedChanged, this, &SimulationController::onSpeedChanged);
     connect(m_model, &model::LifeModel::runningChanged, this, &SimulationController::onRunningChanged);
     connect(m_model, &model::LifeModel::simulationStalled, this, &SimulationController::onStalled);
+    connect(m_model, &model::LifeModel::stepFailed, this, [this](model::CommandResult reason) {
+        if (m_messages != nullptr)
+        {
+            m_messages->showMessage(tr("模拟计算失败：%1").arg(commandResultText(reason)), 8000);
+        }
+    });
 }
 
 int SimulationController::speed() const
@@ -79,11 +87,16 @@ void SimulationController::setSpeedExternal(int speed)
 void SimulationController::toggleRunning()
 {
     const bool before = m_model->isRunning();
-    if (!m_model->toggleRunning())
+    const model::CommandResult result = m_model->toggleRunning();
+    if (result == model::CommandResult::EmptyBoard)
     {
-        if (m_model->isJumping() && m_messages != nullptr)
+        return; // simulationStalled already carries an explicit message
+    }
+    if (model::failed(result))
+    {
+        if (m_messages != nullptr)
         {
-            m_messages->showMessage(tr("跳转进行中，暂不能开始模拟。"), 3000);
+            m_messages->showMessage(commandResultText(result), 4000);
         }
         return;
     }
@@ -106,18 +119,30 @@ void SimulationController::stepOnce()
 
     if (m_model->isRunning())
     {
-        m_model->setRunning(false);
+        (void)m_model->setRunning(false);
     }
-    m_model->step();
+    const model::CommandResult result = m_model->step();
     if (m_messages != nullptr)
     {
-        m_messages->showMessage(tr("单步演化到第 %1 代。").arg(m_model->stats().generation), 3000);
+        if (model::succeeded(result))
+        {
+            m_messages->showMessage(tr("单步演化到第 %1 代。").arg(m_model->stats().generation), 3000);
+        }
+        else
+        {
+            m_messages->showMessage(commandResultText(result), 4000);
+        }
     }
 }
 
 void SimulationController::onTick()
 {
-    m_model->requestStep();
+    const model::CommandResult result = m_model->requestStep();
+    // Busy/NotRunning are normal backpressure states; do not spam the status bar.
+    if (result == model::CommandResult::OutOfMemory && m_messages != nullptr)
+    {
+        m_messages->showMessage(commandResultText(result), 4000);
+    }
 }
 
 void SimulationController::onRunningChanged(bool running)

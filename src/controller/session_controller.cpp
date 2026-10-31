@@ -1,5 +1,8 @@
 #include "controller/session_controller.h"
 
+#include "controller/controller_log.h"
+#include "controller/error_text.h"
+
 #include <QDialog>
 #include <QMainWindow>
 
@@ -42,8 +45,22 @@ const model::AppSettings& SessionController::settings() const
 
 bool SessionController::restore()
 {
-    const service::SessionState state = m_store->load();
+    const service::SettingsLoadResult loadedState = m_store->load();
+    const service::SessionState state = loadedState.state;
     m_settings = model::normalized(state.settings);
+
+    qCInfo(lcController) << "session restore start has_board=" << !state.boardRle.isEmpty()
+                         << "generation=" << state.generation << "rule=" << state.ruleNotation
+                         << "boundary=" << state.boundary;
+    if (loadedState.error != service::SettingsError::None)
+    {
+        qCWarning(lcController) << "settings restore failed error="
+                                << service::settingsErrorName(loadedState.error);
+        if (m_messages != nullptr)
+        {
+            m_messages->showMessage(settingsErrorText(loadedState.error, loadedState.detail), 8000);
+        }
+    }
 
     m_model->setSnapshotInterval(m_settings.snapshotInterval);
     m_model->setBoundary(state.boundary == 1 ? domain::Boundary::Wrap : domain::Boundary::Dead);
@@ -53,19 +70,44 @@ bool SessionController::restore()
     if (!state.boardRle.isEmpty())
     {
         const domain::RleDecodeResult decoded = domain::decodeRle(state.boardRle.toStdString());
-        if (decoded.document.has_value() && m_model->loadDocument(*decoded.document))
+        if (decoded.document.has_value())
         {
-            restored = true;
-            if (state.generation > 0)
+            const model::CommandResult loaded = m_model->loadDocument(*decoded.document);
+            if (model::succeeded(loaded))
             {
-                m_model->setGeneration(state.generation);
+                restored = true;
+                if (state.generation > 0)
+                {
+                    (void)m_model->setGeneration(state.generation);
+                }
+            }
+            else if (m_messages != nullptr)
+            {
+                m_messages->showMessage(
+                    tr("上次会话的棋盘无法恢复：%1 已改为示例棋盘。").arg(commandResultText(loaded)), 8000);
+            }
+        }
+        else
+        {
+            qCWarning(lcController) << "stored RLE decode failed code="
+                                    << domain::rleErrorName(decoded.error.code) << "line="
+                                    << decoded.error.line << "column=" << decoded.error.column
+                                    << "length=" << state.boardRle.size();
+            if (m_messages != nullptr)
+            {
+                m_messages->showMessage(tr("上次会话的棋盘无法解析，已改为示例棋盘。"), 8000);
             }
         }
     }
 
     if (!restored)
     {
-        m_model->resizeBoard(domain::kDefaultBoardWidth, domain::kDefaultBoardHeight);
+        const model::CommandResult resized =
+            m_model->resizeBoard(domain::kDefaultBoardWidth, domain::kDefaultBoardHeight);
+        if (model::failed(resized) && m_messages != nullptr)
+        {
+            m_messages->showMessage(commandResultText(resized), 5000);
+        }
     }
 
     m_panel->setJumpStep(m_settings.jumpStep);
@@ -77,13 +119,18 @@ bool SessionController::restore()
 
     if (m_window != nullptr && !state.windowGeometry.isEmpty())
     {
-        m_window->restoreGeometry(state.windowGeometry);
+        if (!m_window->restoreGeometry(state.windowGeometry))
+        {
+            qCDebug(lcController) << "window geometry restore failed";
+        }
     }
 
+    qCInfo(lcController) << "session restore done restored=" << restored << "board=" << m_model->width() << 'x'
+                         << m_model->height() << "generation" << m_model->stats().generation;
     return restored;
 }
 
-void SessionController::save()
+service::SettingsError SessionController::save()
 {
     m_settings.density = m_panel->randomDensity();
     m_settings.speed = m_simulation->speed();
@@ -100,7 +147,23 @@ void SessionController::save()
     {
         state.windowGeometry = m_window->saveGeometry();
     }
-    m_store->save(state);
+
+    QString detail;
+    const service::SettingsError error = m_store->save(state, &detail);
+    if (error != service::SettingsError::None)
+    {
+        qCWarning(lcController) << "session save failed error=" << service::settingsErrorName(error);
+        if (m_messages != nullptr)
+        {
+            m_messages->showMessage(settingsErrorText(error, detail), 8000);
+        }
+    }
+    else
+    {
+        qCInfo(lcController) << "session saved board=" << m_model->width() << 'x' << m_model->height()
+                             << "generation" << m_model->stats().generation;
+    }
+    return error;
 }
 
 void SessionController::openSettings()
@@ -118,18 +181,17 @@ void SessionController::openSettings()
     dialog.setValues(m_settings);
     if (dialog.exec() != QDialog::Accepted)
     {
+        qCDebug(lcController) << "settings dialog cancelled";
         return;
     }
 
-    const model::AppSettings edited = dialog.values();
-    m_settings.jumpStep = edited.jumpStep;
-    m_settings.sizeStep = edited.sizeStep;
-    m_settings.snapshotInterval = edited.snapshotInterval;
-    m_settings = model::normalized(m_settings);
+    m_settings = model::normalized(dialog.values());
 
     applySettings();
     save();
 
+    qCInfo(lcController) << "settings applied jump_step=" << m_settings.jumpStep << "size_step="
+                         << m_settings.sizeStep << "snapshot_interval=" << m_settings.snapshotInterval;
     if (m_messages != nullptr)
     {
         m_messages->showMessage(tr("设置已保存。"), 3000);
@@ -138,7 +200,11 @@ void SessionController::openSettings()
 
 void SessionController::applySettings()
 {
-    m_model->setSnapshotInterval(m_settings.snapshotInterval);
+    const model::CommandResult result = m_model->setSnapshotInterval(m_settings.snapshotInterval);
+    if (model::failed(result) && m_messages != nullptr)
+    {
+        m_messages->showMessage(tr("设置应用失败：%1").arg(commandResultText(result)), 4000);
+    }
     m_panel->setJumpStep(m_settings.jumpStep);
     m_panel->setSizeStep(m_settings.sizeStep);
 }

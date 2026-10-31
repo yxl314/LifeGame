@@ -4,6 +4,7 @@
 #include <QPoint>
 #include <QSignalBlocker>
 
+#include "controller/error_text.h"
 #include "controller/line_raster.h"
 #include "domain/pattern_library.h"
 #include "model/life_model.h"
@@ -20,18 +21,24 @@ BoardController::BoardController(model::LifeModel* model,
                                  view::ControlPanel* panel,
                                  const view::PatternCatalog* catalog,
                                  view::MessageSink* messages,
+                                 view::ConfirmSink* confirm,
                                  QObject* parent)
     : QObject(parent),
       m_model(model),
       m_view(view),
       m_panel(panel),
       m_catalog(catalog),
-      m_messages(messages)
+      m_messages(messages),
+      m_confirm(confirm)
 {
     connect(m_view, &view::BoardView::cellPressed, this, &BoardController::onCellPressed);
     connect(m_view, &view::BoardView::cellDragged, this, &BoardController::onCellDragged);
     connect(m_view, &view::BoardView::cellReleased, this, &BoardController::onCellReleased);
     connect(m_panel, &view::ControlPanel::patternChanged, this, &BoardController::selectPattern);
+    connect(m_panel, &view::ControlPanel::clearRequested, this, &BoardController::clearBoard);
+    connect(m_panel, &view::ControlPanel::randomizeRequested, this, &BoardController::onPanelRandomize);
+    connect(m_panel, &view::ControlPanel::resizeRequested, this, &BoardController::resizeBoard);
+    connect(m_panel, &view::ControlPanel::gridVisibilityChanged, this, &BoardController::setGridVisible);
 
     QVector<view::PatternOption> options;
     options.append({tr("画笔（直接绘制）"), -1});
@@ -144,16 +151,27 @@ void BoardController::paintLine(int fromRow, int fromCol, int toRow, int toCol, 
 
 void BoardController::applyStamp(int row, int col)
 {
-    if (m_model->placePattern(m_stamp, row, col))
+    const model::CommandResult result = m_model->placePattern(m_stamp, row, col);
+    if (m_messages == nullptr)
     {
-        if (m_messages != nullptr)
-        {
-            m_messages->showMessage(tr("已放置图案：%1").arg(m_catalog->displayLabel(m_stamp)), 3000);
-        }
+        return;
     }
-    else if (m_messages != nullptr)
+    if (result == model::CommandResult::Success || result == model::CommandResult::Clipped)
     {
-        m_messages->showMessage(tr("无法放置图案：棋盘外或位置未变化。"), 3000);
+        QString text = tr("已放置图案：%1").arg(m_catalog->displayLabel(m_stamp));
+        if (result == model::CommandResult::Clipped)
+        {
+            text += tr("（越界部分已裁掉）");
+        }
+        m_messages->showMessage(text, 3000);
+    }
+    else if (result == model::CommandResult::NoChange)
+    {
+        m_messages->showMessage(tr("图案没有改变任何细胞。"), 3000);
+    }
+    else
+    {
+        m_messages->showMessage(commandResultText(result), 4000);
     }
 }
 
@@ -196,32 +214,81 @@ void BoardController::selectPattern(int patternId)
 
 void BoardController::clearBoard()
 {
-    if (m_model->clear())
+    if (m_model->stats().population > 0 && m_confirm != nullptr &&
+        !m_confirm->confirm(tr("清空棋盘"), tr("确定要清空当前棋盘吗？此操作无法撤销。")))
     {
         if (m_messages != nullptr)
         {
-            m_messages->showMessage(tr("棋盘已清空。"), 3000);
+            m_messages->showMessage(tr("已取消清空。"), 3000);
         }
+        return;
     }
-    else if (m_messages != nullptr)
+
+    const model::CommandResult result = m_model->clear();
+    if (m_messages == nullptr)
     {
-        m_messages->showMessage(tr("跳转进行中，暂不能清空。"), 3000);
+        return;
     }
+    m_messages->showMessage(result == model::CommandResult::Success ? tr("棋盘已清空。")
+                                                                   : commandResultText(result),
+                            3000);
 }
 
 void BoardController::randomizeBoard()
 {
-    const int density = m_panel->randomDensity();
-    if (m_model->randomize(density))
+    onPanelRandomize(m_panel->randomDensity());
+}
+
+void BoardController::onPanelRandomize(int density)
+{
+    const model::CommandResult result = m_model->randomize(density);
+    if (m_messages == nullptr)
+    {
+        return;
+    }
+    if (result == model::CommandResult::Success)
+    {
+        m_messages->showMessage(tr("已按 %1% 密度随机填充。").arg(density), 4000);
+    }
+    else
+    {
+        m_messages->showMessage(commandResultText(result), 4000);
+    }
+}
+
+void BoardController::resizeBoard(int width, int height)
+{
+    if (m_model->stats().population > 0 && m_confirm != nullptr &&
+        !m_confirm->confirm(tr("调整棋盘尺寸"), tr("调整尺寸会清空当前棋盘，是否继续？")))
     {
         if (m_messages != nullptr)
         {
-            m_messages->showMessage(tr("已按 %1% 密度随机填充。").arg(density), 4000);
+            m_messages->showMessage(tr("已取消调整尺寸。"), 3000);
         }
+        return;
     }
-    else if (m_messages != nullptr)
+
+    const bool wasEmpty = m_model->stats().population == 0;
+    const model::CommandResult result = m_model->resizeBoard(width, height);
+    if (m_messages == nullptr)
     {
-        m_messages->showMessage(tr("跳转进行中，暂不能随机填充。"), 3000);
+        return;
+    }
+    if (result == model::CommandResult::Success || result == model::CommandResult::Adjusted)
+    {
+        QString text = tr("棋盘已调整为 %1 × %2%3。")
+                           .arg(m_model->width())
+                           .arg(m_model->height())
+                           .arg(wasEmpty ? QString() : tr("（原棋盘已清空）"));
+        if (result == model::CommandResult::Adjusted)
+        {
+            text += tr("（尺寸已限制到 20–400）");
+        }
+        m_messages->showMessage(text, 4000);
+    }
+    else
+    {
+        m_messages->showMessage(commandResultText(result), 4000);
     }
 }
 
@@ -238,20 +305,26 @@ void BoardController::loadDemo()
     {
         return;
     }
-    if (!m_model->clear())
+    const model::CommandResult cleared = m_model->clear();
+    if (cleared != model::CommandResult::Success)
     {
         if (m_messages != nullptr)
         {
-            m_messages->showMessage(tr("跳转进行中，暂不能载入示例。"), 3000);
+            m_messages->showMessage(commandResultText(cleared), 4000);
         }
         return;
     }
 
-    if (m_model->placePattern(*chosen, m_model->height() / 2, m_model->width() / 2))
+    const model::CommandResult placed = m_model->placePattern(*chosen, m_model->height() / 2, m_model->width() / 2);
+    if (m_messages != nullptr)
     {
-        if (m_messages != nullptr)
+        if (model::succeeded(placed))
         {
             m_messages->showMessage(tr("已载入示例图案，按空格或点击“开始”运行。"), 5000);
+        }
+        else
+        {
+            m_messages->showMessage(commandResultText(placed), 4000);
         }
     }
 }

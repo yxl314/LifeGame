@@ -128,7 +128,7 @@ void Grid::advance(const Rule& rule, Boundary boundary)
 
     Grid next;
     computeNext(*this, &next, rule, boundary);
-    *this = std::move(next);
+    *this = next; // fixed std::array: explicit copy
 }
 
 void Grid::randomize(int densityPercent, std::uint32_t seed)
@@ -205,7 +205,7 @@ void Grid::computeRows(const Grid& current,
     assert(next != &current);
 
     const Cell* source = current.data();
-    Cell* destination = next->data();
+    Cell* destination = next->m_cells.data();
 
     for (int row = begin; row < end; ++row)
     {

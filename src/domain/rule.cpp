@@ -83,18 +83,22 @@ std::string Rule::notation() const
     return "B" + maskToText(m_birth) + "/S" + maskToText(m_survival);
 }
 
-std::optional<Rule> Rule::fromNotation(std::string_view text)
+RuleParseResult Rule::parse(std::string_view text)
 {
+    RuleParseResult result;
+
     text = trim(text);
     if (text.empty())
     {
-        return std::nullopt;
+        result.error = RuleParseError::Empty;
+        return result;
     }
 
     const std::size_t slash = text.find('/');
     if (slash == std::string_view::npos)
     {
-        return std::nullopt;
+        result.error = RuleParseError::MissingSeparator;
+        return result;
     }
 
     std::string_view birthPart = trim(text.substr(0, slash));
@@ -107,10 +111,12 @@ std::optional<Rule> Rule::fromNotation(std::string_view text)
     std::uint16_t survival = 0;
     if (!parseMask(birthPart, &birth) || !parseMask(survivalPart, &survival))
     {
-        return std::nullopt;
+        result.error = RuleParseError::InvalidCharacter;
+        return result;
     }
 
-    return Rule(birth, survival);
+    result.rule = Rule(birth, survival);
+    return result;
 }
 
 const std::vector<RulePreset>& builtinRulePresets()

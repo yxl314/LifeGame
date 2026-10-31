@@ -1,5 +1,7 @@
 #include "model/simulation_engine.h"
 
+#include "model/model_log.h"
+
 #include <QPair>
 #include <QThreadPool>
 #include <QVector>
@@ -61,23 +63,37 @@ bool SimulationEngine::isBusy() const
     return m_busy;
 }
 
-quint64 SimulationEngine::request(const domain::Grid& board,
-                                  const domain::Rule& rule,
-                                  domain::Boundary boundary)
+CommandResult SimulationEngine::request(const domain::Grid& board,
+                                         const domain::Rule& rule,
+                                         domain::Boundary boundary,
+                                         quint64* requestId)
 {
+    if (requestId == nullptr)
+    {
+        return CommandResult::InvalidArgument;
+    }
+    *requestId = 0;
+
     if (m_busy)
     {
-        return 0;
+        return CommandResult::Busy;
     }
 
     const int width = board.width();
     const int height = board.height();
     if (width <= 0 || height <= 0)
     {
-        return 0;
+        qCWarning(lcModel) << "step request rejected reason=out_of_bounds width=" << width << "height=" << height;
+        return CommandResult::OutOfBounds;
     }
 
-    m_snapshot = std::make_shared<const domain::Grid>(board);
+    auto snapshot = std::shared_ptr<const domain::Grid>(new (std::nothrow) domain::Grid(board));
+    if (!snapshot)
+    {
+        qCCritical(lcModel) << "step request failed reason=out_of_memory width=" << width << "height=" << height;
+        return CommandResult::OutOfMemory;
+    }
+    m_snapshot = std::move(snapshot);
     m_output.resize(width, height);
     m_activeId = m_nextId++;
     m_busy = true;
@@ -104,10 +120,12 @@ quint64 SimulationEngine::request(const domain::Grid& board,
         }
     }
 
+    m_expectedTasks = ranges.size();
     const QFuture<int> future =
         QtConcurrent::mapped(ranges, ComputeRowsTask{m_snapshot, &m_output, rule, boundary});
     m_watcher.setFuture(future);
-    return m_activeId;
+    *requestId = m_activeId;
+    return CommandResult::Success;
 }
 
 void SimulationEngine::discardPending()
@@ -116,23 +134,35 @@ void SimulationEngine::discardPending()
     {
         return;
     }
+    qCDebug(lcModel) << "pending step discarded id=" << m_activeId;
     m_activeId = 0;
 }
 
 domain::Grid SimulationEngine::takeResult()
 {
-    return std::move(m_output);
+    // Grid is a fixed std::array; this is a copy, not a pointer move.
+    return m_output;
 }
 
 void SimulationEngine::onFinished()
 {
     m_busy = false;
     const quint64 finishedId = m_activeId;
+    const int expectedTasks = m_expectedTasks;
     m_activeId = 0;
-    if (finishedId != 0)
+    m_expectedTasks = 0;
+    if (finishedId == 0)
     {
-        emit stepReady(finishedId);
+        return;
     }
+    if (expectedTasks > 0 && m_watcher.future().resultCount() < expectedTasks)
+    {
+        qCCritical(lcModel) << "step computation incomplete results="
+                            << m_watcher.future().resultCount() << "expected=" << expectedTasks;
+        emit stepFailed(CommandResult::ComputationFailed);
+        return;
+    }
+    emit stepReady(finishedId);
 }
 
 } // namespace lifegame::model

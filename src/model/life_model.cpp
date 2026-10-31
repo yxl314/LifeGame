@@ -1,16 +1,35 @@
 #include "model/life_model.h"
 
+#include "model/model_log.h"
+
 #include <QMetaObject>
 #include <QMetaType>
 #include <QtConcurrent>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
-#include <random>
+#include <cstdint>
+#include <new>
 #include <utility>
 
 namespace lifegame::model
 {
+
+namespace
+{
+
+std::shared_ptr<const domain::Grid> makeSnapshot(const domain::Grid& board)
+{
+    domain::Grid* copy = new (std::nothrow) domain::Grid(board);
+    if (copy == nullptr)
+    {
+        return {};
+    }
+    return std::shared_ptr<const domain::Grid>(copy);
+}
+
+} // namespace
 
 LifeModel::LifeModel(QObject* parent)
     : QObject(parent),
@@ -20,8 +39,10 @@ LifeModel::LifeModel(QObject* parent)
     qRegisterMetaType<LifeStats>("lifegame::model::LifeStats");
     qRegisterMetaType<StallReason>("lifegame::model::StallReason");
     qRegisterMetaType<JumpInfo>("lifegame::model::JumpInfo");
+    qRegisterMetaType<CommandResult>("lifegame::model::CommandResult");
 
     connect(&m_engine, &SimulationEngine::stepReady, this, &LifeModel::onStepReady);
+    connect(&m_engine, &SimulationEngine::stepFailed, this, &LifeModel::onStepFailed);
     connect(&m_jumpWatcher, &QFutureWatcher<JumpOutcome>::finished, this, &LifeModel::onJumpFinished);
 
     resetHistory();
@@ -112,11 +133,12 @@ void LifeModel::pauseForEdit()
     }
 }
 
-bool LifeModel::setRunning(bool running)
+CommandResult LifeModel::setRunning(bool running)
 {
-    if (m_jumping)
+    if (!canMutate())
     {
-        return false;
+        qCDebug(lcModel) << "setRunning rejected reason=busy";
+        return CommandResult::Busy;
     }
     if (!running)
     {
@@ -125,20 +147,23 @@ bool LifeModel::setRunning(bool running)
     }
     if (m_running == running)
     {
-        return true;
+        return CommandResult::NoChange;
     }
     if (running && m_population == 0)
     {
+        qCInfo(lcModel) << "simulation start rejected reason=empty_board";
         emit simulationStalled(StallReason::EmptyBoard);
-        return false;
+        return CommandResult::EmptyBoard;
     }
 
     m_running = running;
+    qCInfo(lcModel) << (running ? "simulation started" : "simulation stopped")
+                    << "generation" << m_generation << "population" << m_population;
     emit runningChanged(running);
-    return true;
+    return CommandResult::Success;
 }
 
-bool LifeModel::toggleRunning()
+CommandResult LifeModel::toggleRunning()
 {
     return setRunning(!m_running);
 }
@@ -208,31 +233,48 @@ bool LifeModel::setCells(const std::vector<std::pair<int, int>>& cells, bool ali
     return true;
 }
 
-bool LifeModel::placePattern(const domain::Pattern& pattern, int centerRow, int centerCol)
+CommandResult LifeModel::placePattern(const domain::Pattern& pattern, int centerRow, int centerCol)
 {
-    if (!canMutate() || pattern.width <= 0 || pattern.height <= 0 || pattern.population() == 0)
+    if (!canMutate())
     {
-        return false;
+        return CommandResult::Busy;
+    }
+    if (pattern.width <= 0 || pattern.height <= 0 || pattern.population() == 0 ||
+        !pattern.isConsistent())
+    {
+        qCWarning(lcModel) << "pattern rejected reason=invalid_pattern width=" << pattern.width
+                           << "height=" << pattern.height << "cells=" << pattern.cells.size();
+        return CommandResult::InvalidPattern;
     }
 
     const int topRow = centerRow - pattern.height / 2;
     const int topCol = centerCol - pattern.width / 2;
 
     bool wouldChange = false;
-    for (int row = 0; row < pattern.height && !wouldChange; ++row)
+    bool clipped = false;
+    for (int row = 0; row < pattern.height; ++row)
     {
         for (int col = 0; col < pattern.width; ++col)
         {
-            if (pattern.alive(row, col) && !m_board.cell(topRow + row, topCol + col))
+            if (!pattern.alive(row, col))
+            {
+                continue;
+            }
+            const int targetRow = topRow + row;
+            const int targetCol = topCol + col;
+            if (!m_board.inBounds(targetRow, targetCol))
+            {
+                clipped = true;
+            }
+            else if (!m_board.cell(targetRow, targetCol))
             {
                 wouldChange = true;
-                break;
             }
         }
     }
     if (!wouldChange)
     {
-        return false;
+        return CommandResult::NoChange;
     }
 
     pauseForEdit();
@@ -248,16 +290,18 @@ bool LifeModel::placePattern(const domain::Pattern& pattern, int centerRow, int 
     }
     m_population = m_board.population();
     invalidateHistoryFrom(m_generation);
+    qCDebug(lcModel) << "pattern placed center" << centerRow << centerCol << "size" << pattern.width << 'x'
+                     << pattern.height << "clipped" << clipped;
     emit boardChanged();
     emit statusChanged(stats());
-    return true;
+    return clipped ? CommandResult::Clipped : CommandResult::Success;
 }
 
-bool LifeModel::clear()
+CommandResult LifeModel::clear()
 {
     if (!canMutate())
     {
-        return false;
+        return CommandResult::Busy;
     }
 
     pauseForEdit();
@@ -265,155 +309,205 @@ bool LifeModel::clear()
     m_population = 0;
     m_generation = 0;
     resetHistory();
+    qCInfo(lcModel) << "board cleared";
     emit boardChanged();
     emit statusChanged(stats());
-    return true;
+    return CommandResult::Success;
 }
 
-bool LifeModel::randomize(int densityPercent)
+CommandResult LifeModel::randomize(int densityPercent)
 {
     if (!canMutate())
     {
-        return false;
+        return CommandResult::Busy;
     }
 
     const int density = std::clamp(densityPercent, domain::kMinRandomDensity, domain::kMaxRandomDensity);
-    std::random_device device;
+    const auto ticks = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    const auto seed = static_cast<std::uint32_t>(static_cast<std::uint64_t>(ticks) ^
+                                                 reinterpret_cast<std::uintptr_t>(this));
     pauseForEdit();
-    m_board.randomize(density, device());
+    m_board.randomize(density, seed);
     m_population = m_board.population();
     m_generation = 0;
     resetHistory();
+    qCInfo(lcModel) << "board randomized density" << density << "seed" << seed;
     emit boardChanged();
     emit statusChanged(stats());
-    return true;
+    return CommandResult::Success;
 }
 
-bool LifeModel::resizeBoard(int width, int height)
+CommandResult LifeModel::resizeBoard(int width, int height)
 {
     if (!canMutate())
     {
-        return false;
+        return CommandResult::Busy;
     }
 
     const int clampedWidth = std::clamp(width, domain::kMinBoardExtent, domain::kMaxBoardExtent);
     const int clampedHeight = std::clamp(height, domain::kMinBoardExtent, domain::kMaxBoardExtent);
-    auto board = std::make_unique<domain::Grid>(clampedWidth, clampedHeight);
-    return replaceBoard(std::move(board), 0);
-}
+    const bool adjusted = clampedWidth != width || clampedHeight != height;
 
-bool LifeModel::setRule(const domain::Rule& rule)
-{
-    if (!canMutate() || m_rule == rule)
+    std::unique_ptr<domain::Grid> board(new (std::nothrow) domain::Grid(clampedWidth, clampedHeight));
+    if (!board)
     {
-        return false;
+        qCCritical(lcModel) << "resize failed reason=out_of_memory requested" << width << 'x' << height;
+        return CommandResult::OutOfMemory;
     }
 
+    const CommandResult replaced = replaceBoard(std::move(board), 0);
+    if (replaced != CommandResult::Success)
+    {
+        return replaced;
+    }
+    qCInfo(lcModel) << "board resized requested" << width << 'x' << height << "actual" << clampedWidth << 'x'
+                    << clampedHeight << "adjusted" << adjusted;
+    return adjusted ? CommandResult::Adjusted : CommandResult::Success;
+}
+
+CommandResult LifeModel::setRule(const domain::Rule& rule)
+{
+    if (!canMutate())
+    {
+        return CommandResult::Busy;
+    }
+    if (m_rule == rule)
+    {
+        return CommandResult::NoChange;
+    }
+
+    const std::string oldRule = m_rule.notation();
     m_engine.discardPending();
     m_pendingStepId = 0;
     m_rule = rule;
     resetHistory();
+    qCInfo(lcModel) << "rule changed from" << oldRule.c_str() << "to" << m_rule.notation().c_str();
     emit configurationChanged();
     emit statusChanged(stats());
-    return true;
+    return CommandResult::Success;
 }
 
-bool LifeModel::setRuleByNotation(std::string_view notation)
+CommandResult LifeModel::setRuleByNotation(std::string_view notation)
 {
-    const auto rule = domain::Rule::fromNotation(notation);
-    if (!rule.has_value())
+    const domain::RuleParseResult parsed = domain::Rule::parse(notation);
+    if (parsed.error != domain::RuleParseError::None)
     {
-        return false;
+        qCWarning(lcModel) << "invalid rule notation=" << std::string(notation).c_str()
+                           << "error=" << domain::ruleParseErrorName(parsed.error);
+        return CommandResult::InvalidRule;
     }
-    return setRule(*rule);
+    return setRule(parsed.rule);
 }
 
-bool LifeModel::setBoundary(domain::Boundary boundary)
+CommandResult LifeModel::setBoundary(domain::Boundary boundary)
 {
-    if (!canMutate() || m_boundary == boundary)
+    if (!canMutate())
     {
-        return false;
+        return CommandResult::Busy;
+    }
+    if (m_boundary == boundary)
+    {
+        return CommandResult::NoChange;
     }
 
     m_engine.discardPending();
     m_pendingStepId = 0;
     m_boundary = boundary;
     resetHistory();
+    qCInfo(lcModel) << "boundary changed to" << (boundary == domain::Boundary::Wrap ? "wrap" : "dead");
     emit configurationChanged();
     emit statusChanged(stats());
-    return true;
+    return CommandResult::Success;
 }
 
-bool LifeModel::setSnapshotInterval(int generations)
+CommandResult LifeModel::setSnapshotInterval(int generations)
 {
     if (!canMutate())
     {
-        return false;
+        return CommandResult::Busy;
     }
 
     const int interval =
         std::clamp(generations, limits::kSnapshotIntervalMin, limits::kSnapshotIntervalMax);
     if (interval == m_history.interval())
     {
-        return false;
+        return CommandResult::NoChange;
     }
 
     m_engine.discardPending();
     m_pendingStepId = 0;
+    qCInfo(lcModel) << "snapshot interval changed to" << interval;
     m_history.setInterval(interval);
     resetHistory();
     emit statusChanged(stats());
-    return true;
+    return CommandResult::Success;
 }
 
-bool LifeModel::setGeneration(int generation)
+CommandResult LifeModel::setGeneration(int generation)
 {
     if (!canMutate())
     {
-        return false;
+        return CommandResult::Busy;
     }
 
     const int value = std::max(0, generation);
     if (value == m_generation)
     {
-        return false;
+        return CommandResult::NoChange;
     }
 
     m_engine.discardPending();
     m_pendingStepId = 0;
     m_generation = value;
     resetHistory();
+    qCInfo(lcModel) << "generation set to" << value;
     emit statusChanged(stats());
-    return true;
+    return CommandResult::Success;
 }
 
-bool LifeModel::loadDocument(const domain::DecodedDocument& document)
+CommandResult LifeModel::loadDocument(const domain::DecodedDocument& document)
 {
     if (!canMutate())
     {
-        return false;
+        qCDebug(lcModel) << "document rejected reason=busy";
+        return CommandResult::Busy;
     }
 
     const domain::Pattern& pattern = document.pattern;
-    if (pattern.width <= 0 || pattern.height <= 0 || pattern.width > domain::kMaxBoardExtent ||
-        pattern.height > domain::kMaxBoardExtent)
+    if (!pattern.isConsistent() || pattern.width <= 0 || pattern.height <= 0)
     {
-        return false;
+        qCWarning(lcModel) << "document rejected reason=invalid_size width=" << pattern.width
+                           << "height=" << pattern.height;
+        return CommandResult::InvalidPattern;
+    }
+    if (pattern.width > domain::kMaxBoardExtent || pattern.height > domain::kMaxBoardExtent)
+    {
+        qCWarning(lcModel) << "document rejected reason=too_large width=" << pattern.width
+                           << "height=" << pattern.height;
+        return CommandResult::TooLarge;
     }
 
     std::optional<domain::Rule> rule;
     if (!document.rule.empty())
     {
-        rule = domain::Rule::fromNotation(document.rule);
-        if (!rule.has_value())
+        const domain::RuleParseResult parsed = domain::Rule::parse(document.rule);
+        if (parsed.error != domain::RuleParseError::None)
         {
-            return false;
+            qCWarning(lcModel) << "document rejected reason=invalid_rule error="
+                               << domain::ruleParseErrorName(parsed.error);
+            return CommandResult::InvalidRule;
         }
+        rule = parsed.rule;
     }
 
     const int width = std::max(domain::kMinBoardExtent, pattern.width);
     const int height = std::max(domain::kMinBoardExtent, pattern.height);
-    auto board = std::make_unique<domain::Grid>(width, height);
+    std::unique_ptr<domain::Grid> board(new (std::nothrow) domain::Grid(width, height));
+    if (!board)
+    {
+        qCCritical(lcModel) << "document load failed reason=out_of_memory";
+        return CommandResult::OutOfMemory;
+    }
     for (int row = 0; row < pattern.height; ++row)
     {
         for (int col = 0; col < pattern.width; ++col)
@@ -425,9 +519,10 @@ bool LifeModel::loadDocument(const domain::DecodedDocument& document)
         }
     }
 
-    if (!replaceBoard(std::move(board), 0))
+    const CommandResult replaced = replaceBoard(std::move(board), 0);
+    if (replaced != CommandResult::Success)
     {
-        return false;
+        return replaced;
     }
 
     if (rule.has_value() && *rule != m_rule)
@@ -435,14 +530,16 @@ bool LifeModel::loadDocument(const domain::DecodedDocument& document)
         m_rule = *rule;
         emit configurationChanged();
     }
-    return true;
+    qCInfo(lcModel) << "document loaded board" << width << 'x' << height << "population" << m_population
+                    << "rule" << m_rule.notation().c_str();
+    return CommandResult::Success;
 }
 
-void LifeModel::step()
+CommandResult LifeModel::step()
 {
     if (!canMutate())
     {
-        return;
+        return CommandResult::Busy;
     }
 
     m_engine.discardPending();
@@ -451,26 +548,44 @@ void LifeModel::step()
     domain::Grid next;
     domain::Grid::computeNext(m_board, &next, m_rule, m_boundary);
     applyStep(std::move(next));
+    qCDebug(lcModel) << "manual step generation" << m_generation;
+    return CommandResult::Success;
 }
 
-void LifeModel::requestStep()
+CommandResult LifeModel::requestStep()
 {
-    if (!m_running || m_jumping || m_engine.isBusy() || m_pendingStepId != 0)
+    if (m_jumping)
     {
-        return;
+        return CommandResult::Busy;
+    }
+    if (!m_running)
+    {
+        return CommandResult::NotRunning;
+    }
+    if (m_engine.isBusy() || m_pendingStepId != 0)
+    {
+        return CommandResult::Busy;
     }
 
-    const quint64 requestId = m_engine.request(m_board, m_rule, m_boundary);
-    if (requestId != 0)
+    quint64 requestId = 0;
+    const CommandResult result = m_engine.request(m_board, m_rule, m_boundary, &requestId);
+    if (result == CommandResult::OutOfMemory)
     {
-        m_pendingStepId = requestId;
+        qCCritical(lcModel) << "requestStep failed reason=out_of_memory";
     }
+    if (result != CommandResult::Success)
+    {
+        return result;
+    }
+    m_pendingStepId = requestId;
+    return CommandResult::Success;
 }
 
 void LifeModel::onStepReady(quint64 requestId)
 {
     if (requestId == 0 || requestId != m_pendingStepId)
     {
+        qCDebug(lcModel) << "stale step discarded id=" << requestId << "pending=" << m_pendingStepId;
         return;
     }
     m_pendingStepId = 0;
@@ -483,10 +598,22 @@ void LifeModel::onStepReady(quint64 requestId)
     applyStep(m_engine.takeResult());
 }
 
+void LifeModel::onStepFailed(CommandResult reason)
+{
+    m_pendingStepId = 0;
+    qCCritical(lcModel) << "step failed reason=" << commandResultName(reason);
+    if (m_running)
+    {
+        m_running = false;
+        emit runningChanged(false);
+    }
+    emit stepFailed(reason);
+}
+
 void LifeModel::applyStep(domain::Grid&& next)
 {
     const bool unchanged = next.equals(m_board);
-    m_board = std::move(next);
+    m_board = next; // fixed std::array: explicit copy
     ++m_generation;
     m_population = m_board.population();
     recordSnapshot();
@@ -496,16 +623,26 @@ void LifeModel::applyStep(domain::Grid&& next)
 
     if (unchanged && m_running)
     {
-        setRunning(false);
-        emit simulationStalled(m_population == 0 ? StallReason::Extinct : StallReason::StillLife);
+        const StallReason reason = m_population == 0 ? StallReason::Extinct : StallReason::StillLife;
+        qCInfo(lcModel) << "simulation stalled reason=" << stallReasonName(reason) << "generation" << m_generation
+                        << "population" << m_population;
+        (void)setRunning(false);
+        emit simulationStalled(reason);
     }
 }
 
-bool LifeModel::startJump(int targetGeneration)
+CommandResult LifeModel::startJump(int targetGeneration)
 {
-    if (!canMutate() || targetGeneration < 0 || targetGeneration == m_generation)
+    if (!canMutate())
     {
-        return false;
+        qCDebug(lcModel) << "jump rejected reason=busy";
+        return CommandResult::Busy;
+    }
+    if (targetGeneration < 0 || targetGeneration == m_generation)
+    {
+        qCWarning(lcModel) << "jump rejected reason=invalid_target target=" << targetGeneration
+                           << "current=" << m_generation;
+        return CommandResult::InvalidTarget;
     }
 
     const bool forward = targetGeneration > m_generation;
@@ -515,14 +652,19 @@ bool LifeModel::startJump(int targetGeneration)
     if (forward)
     {
         startGeneration = m_generation;
-        startBoard = std::make_shared<const domain::Grid>(m_board);
+        startBoard = makeSnapshot(m_board);
+        if (!startBoard)
+        {
+            return CommandResult::OutOfMemory;
+        }
     }
     else
     {
         const domain::History::Snapshot* snapshot = m_history.snapshotAtOrBefore(targetGeneration);
         if (snapshot == nullptr)
         {
-            return false; // nothing to pause for
+            qCInfo(lcModel) << "jump rejected reason=no_history target=" << targetGeneration;
+            return CommandResult::NoHistory;
         }
         startGeneration = snapshot->generation;
         startBoard = snapshot->board;
@@ -531,7 +673,7 @@ bool LifeModel::startJump(int targetGeneration)
     const int total = targetGeneration - startGeneration;
     if (total < 0)
     {
-        return false;
+        return CommandResult::InvalidTarget;
     }
 
     pauseForEdit();
@@ -542,19 +684,32 @@ bool LifeModel::startJump(int targetGeneration)
     const int interval = m_history.interval();
     const domain::Rule rule = m_rule;
     const domain::Boundary boundary = m_boundary;
-    auto cancel = std::make_shared<std::atomic_bool>(false);
+    auto cancel = std::shared_ptr<std::atomic_bool>(new (std::nothrow) std::atomic_bool(false));
+    if (!cancel)
+    {
+        qCCritical(lcModel) << "jump failed reason=out_of_memory";
+        return CommandResult::OutOfMemory;
+    }
     m_jumpCancel = cancel;
     m_jumping = true;
+    qCInfo(lcModel) << "jump started from" << startGeneration << "to" << targetGeneration << "replay" << total
+                    << "forward" << forward;
 
     const int target = targetGeneration;
     const int start = startGeneration;
     const QFuture<JumpOutcome> future = QtConcurrent::run(
-        [this, startBoard, start, target, total, forward, rule, boundary, epoch, interval, cancel]() {
+        [this, startBoard, start, target, total, forward, rule, boundary, epoch, interval, cancel]() noexcept {
             JumpOutcome outcome;
             outcome.generation = target;
 
-            auto current = std::make_shared<domain::Grid>(*startBoard);
-            auto next = std::make_shared<domain::Grid>(startBoard->width(), startBoard->height());
+            auto current = std::unique_ptr<domain::Grid>(new (std::nothrow) domain::Grid(*startBoard));
+            auto next = std::unique_ptr<domain::Grid>(
+                new (std::nothrow) domain::Grid(startBoard->width(), startBoard->height()));
+            if (!current || !next)
+            {
+                outcome.error = CommandResult::OutOfMemory;
+                return outcome;
+            }
 
             for (int generation = start + 1; generation <= target; ++generation)
             {
@@ -571,16 +726,18 @@ bool LifeModel::startJump(int targetGeneration)
 
                 if (forward && (generation - epoch) % interval == 0)
                 {
-                    outcome.snapshots.push_back(
-                        {generation, std::make_shared<const domain::Grid>(*current)});
-                    if (outcome.snapshots.size() > static_cast<std::size_t>(domain::History::kMaxSnapshots))
+                    std::shared_ptr<const domain::Grid> snapshot = makeSnapshot(*current);
+                    if (snapshot)
                     {
-                        outcome.snapshots.erase(outcome.snapshots.begin());
+                        outcome.snapshots.push_back({generation, std::move(snapshot)});
+                        if (outcome.snapshots.size() >
+                            static_cast<std::size_t>(domain::History::kMaxSnapshots))
+                        {
+                            outcome.snapshots.erase(outcome.snapshots.begin());
+                        }
                     }
                 }
 
-                // Once the board is empty it stays empty; the remaining
-                // generations cannot change anything.
                 if (done % 64 == 0 && current->population() == 0)
                 {
                     break;
@@ -595,13 +752,17 @@ bool LifeModel::startJump(int targetGeneration)
                 }
             }
 
-            outcome.board = current;
+            outcome.board = makeSnapshot(*current);
+            if (!outcome.board)
+            {
+                outcome.error = CommandResult::OutOfMemory;
+            }
             return outcome;
         });
 
     m_jumpWatcher.setFuture(future);
     emit jumpStarted(JumpInfo{m_generation, target, total});
-    return true;
+    return CommandResult::Success;
 }
 
 void LifeModel::cancelJump()
@@ -614,6 +775,7 @@ void LifeModel::cancelJump()
 
 void LifeModel::reportJumpProgress(int done)
 {
+    qCDebug(lcModel) << "jump progress" << done;
     emit jumpProgress(done);
 }
 
@@ -623,9 +785,21 @@ void LifeModel::onJumpFinished()
     m_jumpCancel.reset();
 
     const JumpOutcome outcome = m_jumpWatcher.result();
-    if (outcome.cancelled || !outcome.board)
+    if (outcome.cancelled)
     {
+        qCInfo(lcModel) << "jump cancelled generation" << m_generation;
         emit jumpCancelled();
+        return;
+    }
+    if (outcome.error != CommandResult::Success)
+    {
+        qCWarning(lcModel) << "jump failed reason=" << commandResultName(outcome.error);
+        emit jumpFailed(outcome.error);
+        return;
+    }
+    if (!outcome.board)
+    {
+        emit jumpFailed(CommandResult::OutOfMemory);
         return;
     }
 
@@ -651,6 +825,7 @@ void LifeModel::onJumpFinished()
         resetHistory();
     }
 
+    qCInfo(lcModel) << "jump finished generation" << m_generation << "population" << m_population;
     emit boardChanged();
     emit statusChanged(stats());
     emit jumpFinished(m_generation);
@@ -658,14 +833,19 @@ void LifeModel::onJumpFinished()
 
 void LifeModel::resetHistory()
 {
-    m_history.reset(m_generation, std::make_shared<const domain::Grid>(m_board));
+    m_history.reset(m_generation, makeSnapshot(m_board));
 }
 
 void LifeModel::recordSnapshot()
 {
-    if (m_history.shouldRecord(m_generation))
+    if (!m_history.shouldRecord(m_generation))
     {
-        m_history.record(m_generation, std::make_shared<const domain::Grid>(m_board));
+        return;
+    }
+    std::shared_ptr<const domain::Grid> snapshot = makeSnapshot(m_board);
+    if (snapshot)
+    {
+        m_history.record(m_generation, std::move(snapshot));
     }
 }
 
@@ -685,11 +865,15 @@ LifeStats LifeModel::computeStats() const
     return LifeStats{m_generation, m_population, std::round(raw * 10.0) / 10.0};
 }
 
-bool LifeModel::replaceBoard(std::unique_ptr<domain::Grid> board, int generation)
+CommandResult LifeModel::replaceBoard(std::unique_ptr<domain::Grid> board, int generation)
 {
-    if (!board || !canMutate())
+    if (!canMutate())
     {
-        return false;
+        return CommandResult::Busy;
+    }
+    if (!board)
+    {
+        return CommandResult::OutOfMemory;
     }
 
     const bool sizeChanged =
@@ -710,7 +894,7 @@ bool LifeModel::replaceBoard(std::unique_ptr<domain::Grid> board, int generation
     }
     emit boardChanged();
     emit statusChanged(stats());
-    return true;
+    return CommandResult::Success;
 }
 
 } // namespace lifegame::model

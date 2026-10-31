@@ -13,6 +13,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(LIFEGAME_BUILD_TESTS "Build the test suite" ON)
 option(LIFEGAME_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
+option(LIFEGAME_NO_EXCEPTIONS "Build application code without C++ exceptions" ON)
 option(LIFEGAME_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 
 find_package(Qt5 5.9 REQUIRED COMPONENTS Core Gui Widgets Concurrent)
@@ -31,6 +32,13 @@ function(lifegame_set_warnings target)
         target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
         if(LIFEGAME_WARNINGS_AS_ERRORS)
             target_compile_options(${target} PRIVATE -Werror)
+        endif()
+    endif()
+    if(LIFEGAME_NO_EXCEPTIONS)
+        if(MSVC)
+            target_compile_options(${target} PRIVATE /EHs-c-)
+        else()
+            target_compile_options(${target} PRIVATE -fno-exceptions)
         endif()
     endif()
     if(LIFEGAME_ENABLE_SANITIZERS)
@@ -72,6 +80,9 @@ add_library(lifegame_model STATIC
     src/model/simulation_engine.h
     src/model/simulation_engine.cpp
     src/model/app_settings.h
+    src/model/model_log.h
+    src/model/model_log.cpp
+    src/model/command_result.h
     src/model/jump_info.h
     src/model/life_stats.h
     src/model/stall_reason.h
@@ -95,7 +106,13 @@ add_library(lifegame_view STATIC
     src/view/jump_progress_dialog.cpp
     src/view/status_bar_view.h
     src/view/status_bar_view.cpp
+    src/view/dialogs.h
+    src/view/dialogs.cpp
     src/view/interfaces.h
+    src/view/message_box_confirm_sink.h
+    src/view/message_box_confirm_sink.cpp
+    src/view/view_log.h
+    src/view/view_log.cpp
     src/view/theme.h
     src/view/theme.cpp
     src/view/rule_catalog.h
@@ -116,6 +133,10 @@ target_compile_features(lifegame_view PUBLIC cxx_std_17)
 # ---------------------------------------------------------------------------
 add_library(lifegame_service STATIC
     src/service/session_state.h
+    src/service/service_log.h
+    src/service/service_log.cpp
+    src/service/file_error.h
+    src/service/settings_error.h
     src/service/settings_store.h
     src/service/settings_store.cpp
     src/service/rle_file_service.h
@@ -134,6 +155,10 @@ target_compile_features(lifegame_service PUBLIC cxx_std_17)
 add_library(lifegame_controller STATIC
     src/controller/line_raster.h
     src/controller/line_raster.cpp
+    src/controller/error_text.h
+    src/controller/error_text.cpp
+    src/controller/controller_log.h
+    src/controller/controller_log.cpp
     src/controller/board_controller.h
     src/controller/board_controller.cpp
     src/controller/simulation_controller.h
@@ -158,6 +183,8 @@ target_compile_features(lifegame_controller PUBLIC cxx_std_17)
 add_library(lifegame_app STATIC
     src/app/main_window.h
     src/app/main_window.cpp
+    src/app/logging.h
+    src/app/logging.cpp
 )
 target_link_libraries(lifegame_app PUBLIC lifegame_controller)
 target_include_directories(lifegame_app PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -204,10 +231,15 @@ if(LIFEGAME_BUILD_TESTS)
     add_test(NAME ui_tests COMMAND ui_tests)
     set_tests_properties(ui_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
-    find_package(Python3 COMPONENTS Interpreter)
-    if(Python3_Interpreter_FOUND)
-        add_test(NAME layering
-                 COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/check_layering.py
-                         ${CMAKE_CURRENT_SOURCE_DIR})
-    endif()
+    add_executable(logging_tests tests/logging_tests.cpp)
+    target_link_libraries(logging_tests PRIVATE lifegame_app Qt5::Test)
+    lifegame_set_warnings(logging_tests)
+    add_test(NAME logging_tests COMMAND logging_tests)
+
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_test(NAME layering
+             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/check_layering.py
+                     ${CMAKE_CURRENT_SOURCE_DIR})
+    add_test(NAME layering_selftest
+             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/layering_selftest.py)
 endif()

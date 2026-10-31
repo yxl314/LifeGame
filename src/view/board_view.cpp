@@ -312,7 +312,7 @@ void BoardView::drawBoard(QPainter& painter,
         }
     }
 
-    if (m_grid_visible && cellPixelsValue >= 4.0)
+    if (m_grid_visible && cellPixelsValue >= 3.0)
     {
         const double dpr = devicePixelRatioF();
         const double cachePixels = boardRect.width() * boardRect.height() * dpr * dpr;
