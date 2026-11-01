@@ -125,7 +125,7 @@ private:
     struct JumpSnapshot
     {
         int generation = 0;
-        std::shared_ptr<const domain::PackedGrid> board;
+        std::shared_ptr<const domain::PackedGrid> packedBoard;
     };
 
     struct JumpOutcome

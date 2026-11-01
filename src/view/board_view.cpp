@@ -11,7 +11,9 @@
 #include <cmath>
 
 #include "domain/grid.h"
+#include "shared/app_settings.h"
 #include "domain/grid.h"
+#include "shared/app_settings.h"
 
 namespace lifegame::view
 {
@@ -23,7 +25,6 @@ constexpr double kMargin = 24.0;
 constexpr double kMinCellPixels = 1.0;
 constexpr double kMaxCellPixels = 48.0;
 constexpr double kCellImageThreshold = 6.0;
-constexpr int kDetailedCellLimit = 250000;
 constexpr double kGridCacheMaxPixels = 4.0 * 1024.0 * 1024.0;
 constexpr int kExportCellPixels = 8;
 constexpr int kExportMaxDimension = 4096;
@@ -326,7 +327,7 @@ void BoardView::drawBoard(QPainter& painter,
         return;
     }
 
-    const bool tooManyCells = width * height > kDetailedCellLimit;
+    const bool tooManyCells = width * height > shared::limits::kLargeBoardCellThreshold;
     if ((m_animating && interactive) || cellPixelsValue < kCellImageThreshold || tooManyCells)
     {
         drawCellsAsImage(painter, board, boardRect, interactive, firstRow, lastRow, firstCol, lastCol);

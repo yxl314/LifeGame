@@ -18,6 +18,10 @@ inline constexpr int kSpeedMin = 0;
 inline constexpr int kSpeedMax = 120;
 inline constexpr int kDensityMin = 5;
 inline constexpr int kDensityMax = 90;
+
+// Above this cell count the View uses the image path and the controller
+// may coalesce repaints when the screen cannot keep up with the generation rate.
+inline constexpr int kLargeBoardCellThreshold = 250000;
 } // namespace limits
 
 /// User-adjustable application settings (persisted with the session).

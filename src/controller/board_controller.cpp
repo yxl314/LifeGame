@@ -24,9 +24,6 @@ namespace lifegame::controller
 namespace
 {
 
-// Large boards are rendered only as fast as the screen can present them.
-constexpr int kLargeBoardCells = 250000;
-
 } // namespace
 
 BoardController::BoardController(model::LifeModel* model,
@@ -130,7 +127,7 @@ void BoardController::setGenerationRate(int generationsPerSecond)
 void BoardController::requestViewUpdate()
 {
     const int cells = m_model->width() * m_model->height();
-    if (!m_model->isRunning() || cells <= kLargeBoardCells || m_generationRate <= m_screenRefresh)
+    if (!m_model->isRunning() || cells <= shared::limits::kLargeBoardCellThreshold || m_generationRate <= m_screenRefresh)
     {
         updateViews();
         return;

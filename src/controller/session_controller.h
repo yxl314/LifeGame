@@ -30,7 +30,8 @@ class BoardController;
 class SimulationController;
 
 /// Application/session coordinator: restore on start, persist on exit,
-/// apply the settings dialog. This is the only controller that knows services.
+/// apply the settings dialog. FileController also receives file services, but
+/// this controller owns the settings store and session lifecycle.
 class SessionController : public QObject
 {
     Q_OBJECT

@@ -25,7 +25,7 @@ public:
     struct Snapshot
     {
         int generation = 0;
-        std::shared_ptr<const PackedGrid> board;
+        std::shared_ptr<const PackedGrid> packedBoard;
     };
 
     static constexpr int kMaxSnapshots = 64;

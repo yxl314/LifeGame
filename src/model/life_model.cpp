@@ -667,7 +667,7 @@ CommandResult LifeModel::startJump(int targetGeneration)
             return CommandResult::NoHistory;
         }
         startGeneration = snapshot->generation;
-        domain::Grid restored = snapshot->board->unpack();
+        domain::Grid restored = snapshot->packedBoard->unpack();
         startBoard = std::make_shared<const domain::Grid>(std::move(restored));
     }
 
@@ -817,7 +817,7 @@ void LifeModel::onJumpFinished()
     {
         for (const JumpSnapshot& snapshot : outcome.snapshots)
         {
-            m_history.recordPacked(snapshot.generation, snapshot.board);
+            m_history.recordPacked(snapshot.generation, snapshot.packedBoard);
         }
     }
 

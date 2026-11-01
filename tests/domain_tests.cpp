@@ -541,11 +541,11 @@ void testHistory()
     if (atOrBefore)
     {
         CHECK(atOrBefore->generation == 100);
-        CHECK(atOrBefore->board != nullptr);
-        if (atOrBefore->board)
+        CHECK(atOrBefore->packedBoard != nullptr);
+        if (atOrBefore->packedBoard)
         {
-            CHECK(atOrBefore->board->byteSize() <= (10u * 10u + 7u) / 8u + 8u);
-            CHECK(atOrBefore->board->unpack().equals(*board));
+            CHECK(atOrBefore->packedBoard->byteSize() <= (10u * 10u + 7u) / 8u + 8u);
+            CHECK(atOrBefore->packedBoard->unpack().equals(*board));
         }
     }
     CHECK(history.snapshotAtOrBefore(-1) == nullptr);
