@@ -1,13 +1,8 @@
 #include "controller/board_controller.h"
 
 #include <QAction>
-#include <QGuiApplication>
-#include <QScreen>
 #include <QPoint>
 #include <QSignalBlocker>
-
-#include <cmath>
-#include <QTimer>
 
 #include "controller/error_text.h"
 #include "controller/line_raster.h"
@@ -60,92 +55,7 @@ BoardController::BoardController(model::LifeModel* model,
     m_panel->setPatternOptions(options);
     selectPattern(-1);
 
-    if (QScreen* screen = QGuiApplication::primaryScreen())
-    {
-        const qreal refresh = screen->refreshRate();
-        if (refresh > 0.0)
-        {
-            m_screenRefresh = std::max(1, static_cast<int>(std::lround(refresh)));
-        }
-    }
-
-    m_viewTimer = new QTimer(this);
-    m_viewTimer->setSingleShot(true);
-    m_viewTimer->setInterval(std::max(1, 1000 / m_screenRefresh));
-    connect(m_viewTimer, &QTimer::timeout, this, &BoardController::updateViews);
-
-    connect(m_model, &model::LifeModel::boardChanged, this, &BoardController::requestViewUpdate);
-    connect(m_model, &model::LifeModel::statusChanged, this, &BoardController::requestViewUpdate);
-    connect(m_model, &model::LifeModel::boardResized, this, [this](int width, int height) {
-        if (m_viewTimer != nullptr)
-        {
-            m_viewTimer->stop();
-        }
-        m_view->setBoard(&m_model->board());
-        m_panel->setBoardSize(width, height);
-    });
-    connect(m_model, &model::LifeModel::runningChanged, this, [this](bool running) {
-        if (!running && m_viewTimer != nullptr)
-        {
-            m_viewTimer->stop();
-        }
-        m_view->setRunning(running);
-        m_panel->setRunning(running);
-        if (!running)
-        {
-            updateViews();
-        }
-    });
-
     m_gridVisible = m_view->gridVisible();
-    syncViews();
-}
-
-void BoardController::syncViews()
-{
-    if (m_viewTimer != nullptr)
-    {
-        m_viewTimer->stop();
-    }
-    m_view->setBoard(&m_model->board());
-    m_view->setRunning(m_model->isRunning());
-    m_panel->setRunning(m_model->isRunning());
-    m_panel->setBoardSize(m_model->width(), m_model->height());
-    updateViews();
-}
-
-void BoardController::setGenerationRate(int generationsPerSecond)
-{
-    m_generationRate = std::max(0, generationsPerSecond);
-    if (m_viewTimer != nullptr && m_generationRate <= m_screenRefresh && m_viewTimer->isActive())
-    {
-        m_viewTimer->stop();
-        updateViews();
-    }
-}
-
-void BoardController::requestViewUpdate()
-{
-    const int cells = m_model->width() * m_model->height();
-    if (!m_model->isRunning() || cells <= shared::limits::kLargeBoardCellThreshold || m_generationRate <= m_screenRefresh)
-    {
-        updateViews();
-        return;
-    }
-
-    if (m_viewTimer != nullptr && !m_viewTimer->isActive())
-    {
-        m_viewTimer->start();
-    }
-}
-
-void BoardController::updateViews()
-{
-    m_view->setBoard(&m_model->board());
-    m_view->setPopulation(m_model->stats().population);
-    m_view->refresh();
-    m_panel->setStats(m_model->stats());
-    m_panel->setOldestGeneration(m_model->oldestGeneration());
 }
 
 void BoardController::setGridAction(QAction* action)
@@ -287,11 +197,11 @@ void BoardController::selectPattern(int patternId)
 
     QVector<QPoint> offsets;
     offsets.reserve(m_stamp.population());
-    const int centerCol = m_stamp.width / 2;
-    const int centerRow = m_stamp.height / 2;
-    for (int row = 0; row < m_stamp.height; ++row)
+    const int centerCol = m_stamp.width() / 2;
+    const int centerRow = m_stamp.height() / 2;
+    for (int row = 0; row < m_stamp.height(); ++row)
     {
-        for (int col = 0; col < m_stamp.width; ++col)
+        for (int col = 0; col < m_stamp.width(); ++col)
         {
             if (m_stamp.alive(row, col))
             {
@@ -302,9 +212,9 @@ void BoardController::selectPattern(int patternId)
     m_view->setStampPreview(offsets);
     m_panel->setPatternDescription(tr("%1\n%2\n%3 × %4 · 点击棋盘放置，可连续放置。")
                                        .arg(m_catalog->displayLabel(m_stamp),
-                                            m_catalog->descriptionOf(m_stamp.id))
-                                       .arg(m_stamp.width)
-                                       .arg(m_stamp.height));
+                                            m_catalog->descriptionOf(m_stamp.id()))
+                                       .arg(m_stamp.width())
+                                       .arg(m_stamp.height()));
 }
 
 void BoardController::clearBoard()

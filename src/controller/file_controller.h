@@ -16,8 +16,8 @@ class LifeModel;
 
 namespace lifegame::service
 {
-class RleFileService;
-class ImageFileService;
+class RleFilePort;
+class ImageFilePort;
 }
 
 namespace lifegame::view
@@ -47,8 +47,8 @@ public:
                    view::BoardView* view,
                    view::MessageSink* messages,
                    QWidget* dialogParent,
-                   service::RleFileService* rleService,
-                   service::ImageFileService* imageService,
+                   service::RleFilePort* rleService,
+                   service::ImageFilePort* imageService,
                    QObject* parent = nullptr);
 
     /// Path-based operations used by the dialogs and by tests.
@@ -68,8 +68,8 @@ private:
     view::BoardView* m_view = nullptr;
     view::MessageSink* m_messages = nullptr;
     QWidget* m_dialogParent = nullptr;
-    service::RleFileService* m_rle = nullptr;
-    service::ImageFileService* m_image = nullptr;
+    service::RleFilePort* m_rle = nullptr;
+    service::ImageFilePort* m_image = nullptr;
     QString m_lastDir;
 };
 

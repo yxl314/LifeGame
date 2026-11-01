@@ -4,7 +4,9 @@
 #include <QVector>
 #include <QWidget>
 
+#include "shared/app_settings.h"
 #include "shared/life_stats.h"
+#include "view/view_state.h"
 
 class QCheckBox;
 class QComboBox;
@@ -37,6 +39,7 @@ public:
     explicit ControlPanel(QWidget* parent = nullptr);
 
     void setRuleCatalog(const RuleCatalog* catalog);
+    void applyState(const PanelState& state);
     void setStats(const shared::LifeStats& stats);
     void setRunning(bool running);
     void setBoardSize(int width, int height);
@@ -93,7 +96,7 @@ private:
 
     QSlider* m_speedSlider = nullptr;
     QLabel* m_speedValue = nullptr;
-    int m_speed = 10;
+    int m_speed = shared::limits::kDefaultSpeed;
 
     QSpinBox* m_jumpSpin = nullptr;
     int m_jumpStep = 100;
@@ -112,7 +115,12 @@ private:
     QCheckBox* m_gridCheck = nullptr;
 
     int m_currentGeneration = 0;
+    int m_population = 0;
+    double m_density = -1.0;
     int m_oldestGeneration = 0;
+    int m_panelWidth = 0;
+    int m_panelHeight = 0;
+    bool m_running = false;
     bool m_syncing = false;
 };
 

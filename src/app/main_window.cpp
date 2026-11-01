@@ -27,10 +27,12 @@
 #include <algorithm>
 
 #include "controller/board_controller.h"
+#include "controller/board_presenter.h"
 #include "controller/configuration_controller.h"
 #include "controller/file_controller.h"
 #include "controller/jump_controller.h"
 #include "controller/session_controller.h"
+#include "controller/settings_controller.h"
 #include "controller/simulation_controller.h"
 #include "model/life_model.h"
 #include "service/image_file_service.h"
@@ -89,6 +91,7 @@ MainWindow::MainWindow(QWidget* parent, view::ConfirmSink* confirm)
         m_confirm = m_defaultConfirm.get();
     }
 
+    m_boardPresenter = new controller::BoardPresenter(m_model, m_view, m_panel, this);
     m_boardController = new controller::BoardController(
         m_model, m_view, m_panel, m_patternCatalog, m_statusBar, m_confirm, this);
     m_simulationController = new controller::SimulationController(m_model, m_panel, m_statusBar, this);
@@ -110,16 +113,18 @@ MainWindow::MainWindow(QWidget* parent, view::ConfirmSink* confirm)
                                                             this,
                                                             m_statusBar,
                                                             this);
+    m_settingsController =
+        new controller::SettingsController(m_model, m_sessionController, this, m_statusBar, this);
 
     setupMenus();
     setupToolBar();
 
     m_simulationController->setPlayPauseAction(m_playAction);
-    m_boardController->setGenerationRate(m_simulationController->speed());
+    m_boardPresenter->setGenerationRate(m_simulationController->speed());
     connect(m_simulationController,
             &controller::SimulationController::speedChanged,
-            m_boardController,
-            &controller::BoardController::setGenerationRate);
+            m_boardPresenter,
+            &controller::BoardPresenter::setGenerationRate);
     m_boardController->setGridAction(m_gridAction);
     m_configurationController->setRuleActionGroup(m_ruleGroup);
 
@@ -131,11 +136,7 @@ MainWindow::MainWindow(QWidget* parent, view::ConfirmSink* confirm)
 
     // Restore may have changed rule/boundary/grid/speed; resync the shell.
     m_simulationController->setPlayPauseAction(m_playAction);
-    m_boardController->setGenerationRate(m_simulationController->speed());
-    connect(m_simulationController,
-            &controller::SimulationController::speedChanged,
-            m_boardController,
-            &controller::BoardController::setGenerationRate);
+    m_boardPresenter->setGenerationRate(m_simulationController->speed());
     m_boardController->setGridAction(m_gridAction);
     m_configurationController->setRuleActionGroup(m_ruleGroup);
 
@@ -148,8 +149,12 @@ MainWindow::~MainWindow()
     // Controllers hold model/view pointers. Destroy them explicitly before
     // the QObject child list deletes the model/views, so a future controller
     // destructor can never observe a half-destroyed model.
+    delete m_settingsController;
+    m_settingsController = nullptr;
     delete m_sessionController;
     m_sessionController = nullptr;
+    delete m_boardPresenter;
+    m_boardPresenter = nullptr;
     delete m_configurationController;
     m_configurationController = nullptr;
     delete m_fileController;
@@ -276,7 +281,7 @@ void MainWindow::setupMenus()
     QAction* settingsAction = editMenu->addAction(QIcon(QStringLiteral(":/icons/settings.svg")), tr("设置(&S)…"));
     settingsAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+,")));
     settingsAction->setStatusTip(tr("调整跳转粒度、尺寸粒度与回退快照间隔"));
-    connect(settingsAction, &QAction::triggered, m_sessionController, &controller::SessionController::openSettings);
+    connect(settingsAction, &QAction::triggered, m_settingsController, &controller::SettingsController::openSettings);
 
     auto* simMenu = menuBar()->addMenu(tr("模拟(&S)"));
     m_playAction = simMenu->addAction(QIcon(QStringLiteral(":/icons/play.svg")), tr("开始(&P)"));

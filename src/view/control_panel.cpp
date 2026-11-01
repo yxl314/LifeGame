@@ -354,7 +354,20 @@ void ControlPanel::setupUi()
 
     root->addStretch(1);
 
+    m_panelWidth = m_widthSpin->value();
+    m_panelHeight = m_heightSpin->value();
     setRunning(false);
+    syncBoundarySelection();
+}
+
+void ControlPanel::applyState(const PanelState& state)
+{
+    setStats(state.stats);
+    setRunning(state.running);
+    setBoardSize(state.width, state.height);
+    setRuleNotation(state.ruleNotation);
+    setBoundaryIndex(state.boundaryIndex);
+    setOldestGeneration(state.oldestGeneration);
 }
 
 void ControlPanel::setRuleCatalog(const RuleCatalog* catalog)
@@ -448,16 +461,30 @@ void ControlPanel::setSizeStep(int step)
 
 void ControlPanel::setStats(const shared::LifeStats& stats)
 {
-    m_currentGeneration = std::max(0, stats.generation);
-    m_generationValue->setText(QLocale().toString(m_currentGeneration));
-    m_populationValue->setText(QLocale().toString(std::max(0, stats.population)));
-    m_densityValue->setText(
-        QStringLiteral("%1%").arg(QString::number(std::max(0.0, stats.density), 'f', 1)));
+    const int generation = std::max(0, stats.generation);
+    const int population = std::max(0, stats.population);
+    const double density = std::max(0.0, stats.density);
+    if (generation == m_currentGeneration && population == m_population &&
+        qFuzzyCompare(density + 1.0, m_density + 1.0))
+    {
+        return;
+    }
+    m_currentGeneration = generation;
+    m_population = population;
+    m_density = density;
+    m_generationValue->setText(QLocale().toString(generation));
+    m_populationValue->setText(QLocale().toString(population));
+    m_densityValue->setText(QStringLiteral("%1%").arg(QString::number(density, 'f', 1)));
     updateJumpState();
 }
 
 void ControlPanel::setRunning(bool running)
 {
+    if (m_running == running)
+    {
+        return;
+    }
+    m_running = running;
     m_playButton->setText(running ? tr("暂停") : tr("开始"));
     m_playButton->setIcon(QIcon(running ? QStringLiteral(":/icons/pause.svg")
                                         : QStringLiteral(":/icons/play.svg")));
@@ -466,27 +493,49 @@ void ControlPanel::setRunning(bool running)
 
 void ControlPanel::setBoardSize(int width, int height)
 {
+    const int nextWidth = std::clamp(width, m_widthSpin->minimum(), m_widthSpin->maximum());
+    const int nextHeight = std::clamp(height, m_heightSpin->minimum(), m_heightSpin->maximum());
+    if (nextWidth == m_panelWidth && nextHeight == m_panelHeight)
+    {
+        return;
+    }
+    m_panelWidth = nextWidth;
+    m_panelHeight = nextHeight;
     const QSignalBlocker widthBlocker(m_widthSpin);
     const QSignalBlocker heightBlocker(m_heightSpin);
-    m_widthSpin->setValue(std::clamp(width, m_widthSpin->minimum(), m_widthSpin->maximum()));
-    m_heightSpin->setValue(std::clamp(height, m_heightSpin->minimum(), m_heightSpin->maximum()));
+    m_widthSpin->setValue(nextWidth);
+    m_heightSpin->setValue(nextHeight);
 }
 
 void ControlPanel::setRuleNotation(const QString& notation)
 {
+    if (m_ruleNotation == notation && m_ruleCombo->count() > 0)
+    {
+        return;
+    }
     m_ruleNotation = notation;
     syncRuleSelection();
 }
 
 void ControlPanel::setBoundaryIndex(int index)
 {
-    m_boundaryIndex = index == 1 ? 1 : 0;
+    const int next = index == 1 ? 1 : 0;
+    if (m_boundaryIndex == next && m_boundaryCombo->count() > 0)
+    {
+        return;
+    }
+    m_boundaryIndex = next;
     syncBoundarySelection();
 }
 
 void ControlPanel::setOldestGeneration(int generation)
 {
-    m_oldestGeneration = std::max(0, generation);
+    const int next = std::max(0, generation);
+    if (m_oldestGeneration == next)
+    {
+        return;
+    }
+    m_oldestGeneration = next;
     updateJumpState();
 }
 

@@ -148,9 +148,9 @@ BoardView::cellPressed(row, col)
   → LifeModel::setCell(row, col, !alive)    // 命令
   → LifeModel 更新棋盘、人口、历史
   → LifeModel::boardChanged / statusChanged  // 广播
-  → BoardController 查询 Model
-  → BoardView::setBoard(const Grid*)         // 只传只读指针
-  → ControlPanel::setStats(LifeStats)        // 被动 setter
+  → BoardPresenter 查询 Model
+  → BoardView::applyFrame(BoardFrame)        // 原子帧
+  → ControlPanel::applyState(PanelState)     // 原子面板状态
 ```
 
 模拟定时器：
@@ -163,7 +163,7 @@ QTimer::timeout
   → QFutureWatcher::finished
   → LifeModel::onStepReady() → applyStep()
   → boardChanged / statusChanged
-  → BoardController 推送到 BoardView / ControlPanel
+  → BoardPresenter 推送到 BoardView / ControlPanel
 ```
 
 Controller **不**复制整块棋盘；它把 `const domain::Grid*` 交给 View，
@@ -181,7 +181,7 @@ src/shared/                   跨层只读契约值对象（无 Qt、无行为�
 src/model/                    可观察 Model + CommandResult + 异步管线
 src/service/                  QSettings / RLE / PNG + FileError/SettingsError
 src/view/                     自绘棋盘、面板、对话框、确认/提示、目录、主题
-src/controller/               输入、会话、错误文案映射（按职责拆分）
+src/controller/               输入、Presenter、会话/设置、错误文案映射
 src/app/                      组合根、日志 sink、main
 tests/                        domain / model / view / controller / ui / logging
 tools/check_layering.py       层间 include / 纯净度 / CMake 门禁
@@ -191,7 +191,7 @@ tools/layering_selftest.py    门禁负向 fixture
 ### 关键约束
 
 - `BoardView` / `ControlPanel` 不包含任何 `model/` 头文件，不持有 `LifeModel*`；
-  Controller 通过 `setBoard/setStats/setRunning/...` 推送显示状态。
+  BoardPresenter 通过 `applyFrame/applyState` 原子推送显示状态。
 - Controller 是除 App 组合根之外，唯一同时持有可写 Model 与 View 的层；
   View 的信号只连接到 Controller，Model 的信号也只由 Controller 消费。
 - `LifeModel` 不包含 View/Controller/Service，也不出现 `QFile`、`QSettings`、`QFileDialog`

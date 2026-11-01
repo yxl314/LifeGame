@@ -73,18 +73,18 @@ void Grid::setCell(int row, int col, bool alive)
     }
 }
 
-bool Grid::toggleCell(int row, int col)
+std::optional<bool> Grid::toggleCell(int row, int col)
 {
     if (!inBounds(row, col))
     {
-        return false;
+        return std::nullopt;
     }
 
     const std::size_t index = static_cast<std::size_t>(row) * static_cast<std::size_t>(m_width) +
                               static_cast<std::size_t>(col);
     if (index >= m_cells.size())
     {
-        return false;
+        return std::nullopt;
     }
     Cell& value = m_cells[index];
     value = value != kDead ? kDead : kAlive;

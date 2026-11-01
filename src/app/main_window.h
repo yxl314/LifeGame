@@ -10,10 +10,12 @@ class QActionGroup;
 namespace lifegame::controller
 {
 class BoardController;
+class BoardPresenter;
 class ConfigurationController;
 class FileController;
 class JumpController;
 class SessionController;
+class SettingsController;
 class SimulationController;
 } // namespace controller
 
@@ -76,11 +78,13 @@ protected:
     view::StatusBarView* m_statusBar = nullptr;
 
     controller::BoardController* m_boardController = nullptr;
+    controller::BoardPresenter* m_boardPresenter = nullptr;
     controller::SimulationController* m_simulationController = nullptr;
     controller::JumpController* m_jumpController = nullptr;
     controller::FileController* m_fileController = nullptr;
     controller::ConfigurationController* m_configurationController = nullptr;
     controller::SessionController* m_sessionController = nullptr;
+    controller::SettingsController* m_settingsController = nullptr;
 
     std::unique_ptr<service::SettingsStore> m_settingsStore;
     std::unique_ptr<service::RleFileService> m_rleService;

@@ -410,22 +410,18 @@ RleDecodeResult decodeRle(std::string_view text)
     document.description = std::move(description);
     document.rule = std::move(header.rule);
 
-    Pattern& pattern = document.pattern;
-    pattern.id = "rle";
-    pattern.width = width;
-    pattern.height = height;
-    pattern.cells.assign(static_cast<std::size_t>(width) * static_cast<std::size_t>(height), kDead);
-
+    std::vector<Cell> cells(static_cast<std::size_t>(width) * static_cast<std::size_t>(height), kDead);
     const int copyRows = std::min(height, static_cast<int>(rows.size()));
     for (int r = 0; r < copyRows; ++r)
     {
         const int copyCols = std::min(width, static_cast<int>(rows[static_cast<std::size_t>(r)].size()));
         for (int c = 0; c < copyCols; ++c)
         {
-            pattern.cells[static_cast<std::size_t>(r) * static_cast<std::size_t>(width) +
-                          static_cast<std::size_t>(c)] = rows[static_cast<std::size_t>(r)][static_cast<std::size_t>(c)];
+            cells[static_cast<std::size_t>(r) * static_cast<std::size_t>(width) + static_cast<std::size_t>(c)] =
+                rows[static_cast<std::size_t>(r)][static_cast<std::size_t>(c)];
         }
     }
+    document.pattern = Pattern("rle", width, height, std::move(cells));
 
     return {std::move(document), {}};
 }

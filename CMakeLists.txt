@@ -90,6 +90,8 @@ add_library(lifegame_model STATIC
     src/model/life_model.cpp
     src/model/simulation_engine.h
     src/model/simulation_engine.cpp
+    src/model/jump_runner.h
+    src/model/jump_runner.cpp
     src/model/model_log.h
     src/model/model_log.cpp
     src/model/command_result.h
@@ -121,6 +123,7 @@ add_library(lifegame_view STATIC
     src/view/message_box_confirm_sink.cpp
     src/view/view_log.h
     src/view/view_log.cpp
+    src/view/view_state.h
     src/view/theme.h
     src/view/theme.cpp
     src/view/rule_catalog.h
@@ -165,6 +168,8 @@ add_library(lifegame_controller STATIC
     src/controller/line_raster.cpp
     src/controller/error_text.h
     src/controller/error_text.cpp
+    src/controller/board_presenter.h
+    src/controller/board_presenter.cpp
     src/controller/controller_log.h
     src/controller/controller_log.cpp
     src/controller/board_controller.h
@@ -179,6 +184,10 @@ add_library(lifegame_controller STATIC
     src/controller/configuration_controller.cpp
     src/controller/session_controller.h
     src/controller/session_controller.cpp
+    src/controller/session_service.h
+    src/controller/session_service.cpp
+    src/controller/settings_controller.h
+    src/controller/settings_controller.cpp
 )
 target_link_libraries(lifegame_controller PUBLIC lifegame_model lifegame_view lifegame_service lifegame_shared Qt5::Widgets)
 target_include_directories(lifegame_controller PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)

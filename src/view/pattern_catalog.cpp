@@ -41,7 +41,7 @@ const PatternInfo* PatternCatalog::find(std::string_view id) const
 
 QString PatternCatalog::displayLabel(const domain::Pattern& pattern) const
 {
-    if (const PatternInfo* info = find(pattern.id))
+    if (const PatternInfo* info = find(pattern.id()))
     {
         return QStringLiteral("%1 · %2").arg(info->category, info->name);
     }

@@ -54,9 +54,9 @@ void placePattern(lifegame::domain::Grid* board,
                   int topRow,
                   int topCol)
 {
-    for (int row = 0; row < pattern.height; ++row)
+    for (int row = 0; row < pattern.height(); ++row)
     {
-        for (int col = 0; col < pattern.width; ++col)
+        for (int col = 0; col < pattern.width(); ++col)
         {
             if (pattern.alive(row, col))
             {
@@ -144,7 +144,7 @@ void testGridBasics()
     Grid clamped(1501, 1001);
     CHECK(clamped.width() == Grid::kMaxWidth);
     CHECK(clamped.height() == Grid::kMaxHeight);
-    CHECK(clamped.cells().size() == static_cast<std::size_t>(Grid::kMaxCells));
+    CHECK(clamped.activeCellStorage() == static_cast<std::size_t>(Grid::kMaxCells));
 
     Grid movedFrom(10, 8);
     Grid moved(std::move(movedFrom));
@@ -165,11 +165,12 @@ void testGridBasics()
     board.setCell(1, 2, true);
     CHECK(board.cell(1, 2));
     CHECK(board.population() == 1);
-    CHECK(board.toggleCell(1, 2) == false);
+    CHECK(board.toggleCell(1, 2) == std::optional<bool>{false});
     CHECK(board.population() == 0);
-    CHECK(board.toggleCell(1, 2) == true);
+    CHECK(board.toggleCell(1, 2) == std::optional<bool>{true});
     CHECK(board.population() == 1);
 
+    CHECK(!board.toggleCell(100, 100).has_value());
     board.setCell(100, 100, true);
     CHECK(board.population() == 1);
 
@@ -324,13 +325,13 @@ void testPatternLibrary()
     std::set<std::string> ids;
     for (const auto& pattern : patterns)
     {
-        CHECK(!pattern.id.empty());
-        CHECK(pattern.width > 0);
-        CHECK(pattern.height > 0);
-        CHECK(pattern.cells.size() ==
-              static_cast<std::size_t>(pattern.width) * static_cast<std::size_t>(pattern.height));
+        CHECK(!pattern.id().empty());
+        CHECK(pattern.width() > 0);
+        CHECK(pattern.height() > 0);
+        CHECK(pattern.cells().size() ==
+              static_cast<std::size_t>(pattern.width()) * static_cast<std::size_t>(pattern.height()));
         CHECK(pattern.population() > 0);
-        ids.insert(pattern.id);
+        ids.insert(pattern.id());
     }
     CHECK(ids.size() == patterns.size());
 
@@ -340,8 +341,8 @@ void testPatternLibrary()
 
     if (const auto* gun = lifegame::domain::findBuiltinPattern("gosper_gun"))
     {
-        CHECK(gun->width == 36);
-        CHECK(gun->height == 9);
+        CHECK(gun->width() == 36);
+        CHECK(gun->height() == 9);
         CHECK(gun->population() == 36);
     }
     if (const auto* pulsar = lifegame::domain::findBuiltinPattern("pulsar"))
@@ -350,8 +351,8 @@ void testPatternLibrary()
     }
 
     const auto padded = lifegame::domain::Pattern::fromAscii("padded", {"O", "OOO"});
-    CHECK(padded.width == 3);
-    CHECK(padded.height == 2);
+    CHECK(padded.width() == 3);
+    CHECK(padded.height() == 2);
     CHECK(padded.alive(0, 0));
     CHECK(!padded.alive(0, 1));
     CHECK(padded.population() == 4);
@@ -366,17 +367,13 @@ void testPatternInvariant()
 {
     using lifegame::domain::Pattern;
 
-    Pattern broken;
-    broken.id = "broken";
-    broken.width = 10;
-    broken.height = 10;
-    broken.cells.assign(1, 1);
+    const Pattern broken("broken", 10, 10, std::vector<lifegame::domain::Cell>(1, 1));
     CHECK(!broken.isConsistent());
     CHECK(!broken.alive(9, 9)); // must not read out of bounds
 
-    broken.cells.assign(100, 1);
-    CHECK(broken.isConsistent());
-    CHECK(broken.alive(9, 9));
+    const Pattern consistent("consistent", 10, 10, std::vector<lifegame::domain::Cell>(100, 1));
+    CHECK(consistent.isConsistent());
+    CHECK(consistent.alive(9, 9));
 }
 
 void testRleDecode()
@@ -391,8 +388,8 @@ void testRleDecode()
         CHECK(glider.document->title == "Glider");
         CHECK(glider.document->description == "test");
         CHECK(glider.document->rule == "B3/S23");
-        CHECK(glider.document->pattern.width == 3);
-        CHECK(glider.document->pattern.height == 3);
+        CHECK(glider.document->pattern.width() == 3);
+        CHECK(glider.document->pattern.height() == 3);
         CHECK(glider.document->pattern.population() == 5);
         CHECK(glider.document->pattern.alive(0, 1));
         CHECK(glider.document->pattern.alive(2, 0));
@@ -403,8 +400,8 @@ void testRleDecode()
     CHECK(noHeader.document.has_value());
     if (noHeader.document)
     {
-        CHECK(noHeader.document->pattern.width == 3);
-        CHECK(noHeader.document->pattern.height == 3);
+        CHECK(noHeader.document->pattern.width() == 3);
+        CHECK(noHeader.document->pattern.height() == 3);
         CHECK(noHeader.document->pattern.population() == 5);
     }
 
@@ -446,8 +443,8 @@ void testRleDecode()
     CHECK(empty.error.code == RleError::None);
     if (empty.document)
     {
-        CHECK(empty.document->pattern.width == 3);
-        CHECK(empty.document->pattern.height == 2);
+        CHECK(empty.document->pattern.width() == 3);
+        CHECK(empty.document->pattern.height() == 2);
         CHECK(empty.document->pattern.population() == 0);
     }
 }
@@ -469,8 +466,8 @@ void testRleRoundTrip()
     {
         CHECK(decoded.document->title == "roundtrip");
         CHECK(decoded.document->rule == "B3/S23");
-        CHECK(decoded.document->pattern.width == 13);
-        CHECK(decoded.document->pattern.height == 9);
+        CHECK(decoded.document->pattern.width() == 13);
+        CHECK(decoded.document->pattern.height() == 9);
         CHECK(decoded.document->pattern.population() == board.population());
         for (int row = 0; row < 9; ++row)
         {
@@ -487,8 +484,8 @@ void testRleRoundTrip()
     CHECK(emptyDecoded.error.code == lifegame::domain::RleError::None);
     if (emptyDecoded.document)
     {
-        CHECK(emptyDecoded.document->pattern.width == 7);
-        CHECK(emptyDecoded.document->pattern.height == 4);
+        CHECK(emptyDecoded.document->pattern.width() == 7);
+        CHECK(emptyDecoded.document->pattern.height() == 4);
         CHECK(emptyDecoded.document->pattern.population() == 0);
     }
 }
@@ -527,17 +524,17 @@ void testHistory()
     History history(100);
     history.reset(0, board);
     CHECK(history.oldestGeneration() == 0);
-    CHECK(history.snapshots().size() == 1);
+    CHECK(history.size() == 1);
 
     history.record(50, board);
-    CHECK(history.snapshots().size() == 1);
+    CHECK(history.size() == 1);
     history.record(100, board);
     history.record(200, board);
-    CHECK(history.snapshots().size() == 3);
+    CHECK(history.size() == 3);
     CHECK(history.oldestGeneration() == 0);
 
-    const auto* atOrBefore = history.snapshotAtOrBefore(150);
-    CHECK(atOrBefore != nullptr);
+    const auto atOrBefore = history.snapshotAtOrBefore(150);
+    CHECK(atOrBefore.has_value());
     if (atOrBefore)
     {
         CHECK(atOrBefore->generation == 100);
@@ -548,11 +545,11 @@ void testHistory()
             CHECK(atOrBefore->packedBoard->unpack().equals(*board));
         }
     }
-    CHECK(history.snapshotAtOrBefore(-1) == nullptr);
+    CHECK(!history.snapshotAtOrBefore(-1).has_value());
 
     history.invalidateFrom(150);
-    CHECK(history.snapshots().size() == 2);
-    CHECK(history.snapshots().back().generation == 100);
+    CHECK(history.size() == 2);
+    CHECK(history.generationAt(history.size() - 1) == 100);
 
     History longHistory(10);
     longHistory.reset(0, board);
@@ -560,9 +557,9 @@ void testHistory()
     {
         longHistory.record(generation, board);
     }
-    CHECK(longHistory.snapshots().size() == static_cast<std::size_t>(History::kMaxSnapshots) + 1u);
-    CHECK(longHistory.snapshots().front().generation == 0);
-    CHECK(longHistory.snapshots().back().generation == 1000);
+    CHECK(longHistory.size() == static_cast<std::size_t>(History::kMaxSnapshots) + 1u);
+    CHECK(longHistory.generationAt(0) == 0);
+    CHECK(longHistory.generationAt(longHistory.size() - 1) == 1000);
 
     longHistory.setInterval(50);
     CHECK(longHistory.interval() == 50);

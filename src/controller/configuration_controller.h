@@ -41,10 +41,8 @@ public slots:
 
 private:
     void syncRuleActions();
-    void syncPanel();
 
     model::LifeModel* m_model = nullptr;
-    view::ControlPanel* m_panel = nullptr;
     const view::RuleCatalog* m_catalog = nullptr;
     view::MessageSink* m_messages = nullptr;
     QActionGroup* m_ruleGroup = nullptr;

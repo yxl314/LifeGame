@@ -6,30 +6,35 @@
 namespace lifegame::domain
 {
 
+Pattern::Pattern(std::string id, int width, int height, std::vector<Cell> cells)
+    : m_id(std::move(id)), m_width(width), m_height(height), m_cells(std::move(cells))
+{
+}
+
 bool Pattern::alive(int row, int col) const
 {
-    if (row < 0 || row >= height || col < 0 || col >= width)
+    if (row < 0 || row >= m_height || col < 0 || col >= m_width)
     {
         return false;
     }
-    const std::size_t index = static_cast<std::size_t>(row) * static_cast<std::size_t>(width) +
+    const std::size_t index = static_cast<std::size_t>(row) * static_cast<std::size_t>(m_width) +
                               static_cast<std::size_t>(col);
-    return index < cells.size() && cells[index] != kDead;
+    return index < m_cells.size() && m_cells[index] != kDead;
 }
 
 bool Pattern::isConsistent() const
 {
-    if (width < 0 || height < 0)
+    if (m_width < 0 || m_height < 0)
     {
         return false;
     }
-    return cells.size() == static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+    return m_cells.size() == static_cast<std::size_t>(m_width) * static_cast<std::size_t>(m_height);
 }
 
 int Pattern::population() const
 {
     int count = 0;
-    for (const Cell value : cells)
+    for (const Cell value : m_cells)
     {
         count += value != kDead ? 1 : 0;
     }
@@ -38,33 +43,27 @@ int Pattern::population() const
 
 Pattern Pattern::fromAscii(std::string id, const std::vector<std::string>& rows)
 {
-    Pattern pattern;
-    pattern.id = std::move(id);
-    pattern.height = static_cast<int>(rows.size());
-
+    const int height = static_cast<int>(rows.size());
     std::size_t widest = 0;
     for (const std::string& row : rows)
     {
         widest = std::max(widest, row.size());
     }
-    pattern.width = static_cast<int>(widest);
-    pattern.cells.assign(static_cast<std::size_t>(pattern.width) *
-                             static_cast<std::size_t>(pattern.height),
-                         kDead);
+    const int width = static_cast<int>(widest);
 
-    for (int row = 0; row < pattern.height; ++row)
+    std::vector<Cell> cells(static_cast<std::size_t>(width) * static_cast<std::size_t>(height), kDead);
+    for (int row = 0; row < height; ++row)
     {
         const std::string& text = rows[static_cast<std::size_t>(row)];
         for (std::size_t col = 0; col < text.size(); ++col)
         {
             const char ch = text[col];
             const bool alive = ch == 'O' || ch == 'o' || ch == '#' || ch == 'X' || ch == 'x';
-            pattern.cells[static_cast<std::size_t>(row) * static_cast<std::size_t>(pattern.width) +
-                          col] = alive ? kAlive : kDead;
+            cells[static_cast<std::size_t>(row) * static_cast<std::size_t>(width) + col] =
+                alive ? kAlive : kDead;
         }
     }
-
-    return pattern;
+    return Pattern(std::move(id), width, height, std::move(cells));
 }
 
 } // namespace lifegame::domain

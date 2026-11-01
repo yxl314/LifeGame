@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "domain/grid.h"
@@ -60,11 +61,17 @@ public:
     int oldestGeneration() const;
 
     /// Closest snapshot whose generation is <= the requested one, or nullptr.
-    const Snapshot* snapshotAtOrBefore(int generation) const;
+    std::optional<Snapshot> snapshotAtOrBefore(int generation) const;
 
-    const std::vector<Snapshot>& snapshots() const
+    std::size_t size() const noexcept
     {
-        return m_snapshots;
+        return m_snapshots.size();
+    }
+
+    /// Generation of a retained snapshot; returns -1 for an invalid index.
+    int generationAt(std::size_t index) const noexcept
+    {
+        return index < m_snapshots.size() ? m_snapshots[index].generation : -1;
     }
 
     bool empty() const

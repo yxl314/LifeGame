@@ -7,7 +7,6 @@
 
 class QAction;
 class QPoint;
-class QTimer;
 
 namespace lifegame::model
 {
@@ -43,10 +42,6 @@ public:
     void setGridAction(QAction* action);
     bool gridVisible() const;
 
-    /// Called by SimulationController so coalescing only happens when the
-    /// screen refresh rate cannot keep up with the generation rate.
-    void setGenerationRate(int generationsPerSecond);
-
 public slots:
     void setGridVisible(bool visible);
     void clearBoard();
@@ -63,9 +58,6 @@ private slots:
 
 private:
     void paintLine(int fromRow, int fromCol, int toRow, int toCol, bool alive);
-    void syncViews();
-    void requestViewUpdate();
-    void updateViews();
     void applyStamp(int row, int col);
 
     model::LifeModel* m_model = nullptr;
@@ -85,9 +77,6 @@ private:
 
     bool m_gridVisible = true;
     QAction* m_gridAction = nullptr;
-    QTimer* m_viewTimer = nullptr;
-    int m_generationRate = 10;
-    int m_screenRefresh = 60;
 };
 
 } // namespace lifegame::controller

@@ -114,12 +114,15 @@ lifegame             → lifegame_app
 
 | Controller | 职责 |
 |---|---|
-| `BoardController` | 鼠标/图案输入、清空/随机/尺寸/网格；把 Model 的 board/status/running 推送给 `BoardView` 和 `ControlPanel` |
+| `BoardController` | 鼠标/图案输入、清空/随机/尺寸/网格等命令 |
+| `BoardPresenter` | Model→View 推送、屏幕刷新率与帧合并、原子 ViewState |
 | `SimulationController` | 播放/暂停/单步/速度、定时器、停滞与后台失败提示 |
 | `JumpController` | 回退/快进、进度视图、取消 |
 | `FileController` | 打开/保存 RLE、导出 PNG、错误弹窗 |
 | `ConfigurationController` | 规则/边界命令；把规则/边界推送给 `ControlPanel` 和菜单 ActionGroup |
-| `SessionController` | 启动恢复、设置应用、退出保存；设置/会话错误提示 |
+| `SessionController` | 启动恢复、设置应用、退出保存；只负责会话生命周期与提示 |
+| `SessionService` | 无 UI 的会话读写（Model + SettingsStore） |
+| `SettingsController` | 设置对话框输入与应用 |
 
 Controller 是唯一同时持有可写 `LifeModel*` 和具体 View 指针的层（App 组合根除外）。
 `MainWindow` 只创建对象、注入依赖、连接菜单；不直接调用 Model 命令。
@@ -156,7 +159,7 @@ QTimer::timeout
   → QFutureWatcher::finished
   → LifeModel::onStepReady() → applyStep()
   → boardChanged / statusChanged
-  → BoardController 查询 Model，推送到 BoardView / ControlPanel
+  → BoardPresenter 查询 Model，推送到 BoardView / ControlPanel
 ```
 
 ### 打开 RLE（Controller 协调）
@@ -173,10 +176,10 @@ FileController::openRle()
 
 ## 5. 状态所有权与“无棋盘拷贝”
 
-- `LifeModel` 拥有 `std::unique_ptr<domain::Grid>` 棋盘对象；`board()` 返回 `const Grid&`。
-- Controller 在 `boardChanged`/`boardResized` 时把 `&model.board()` 作为 `const Grid*`
-  传给 `BoardView`；View 只在生命周期内读取该指针，不复制棋盘。
-- `BoardView` 通过 `refresh()` 重绘；`setBoard()` 只在棋盘对象/尺寸变化时重置缩放和平移。
+- `LifeModel` 以值成员 `domain::Grid m_board` 拥有棋盘；`board()` 返回 `const Grid&`。
+- `BoardPresenter` 在 `boardChanged`/`boardResized` 时把 `&model.board()` 作为 `const Grid*`
+  放进 `BoardFrame`，`BoardView::applyFrame()` 一次性应用；View 不复制棋盘。
+- `BoardView::applyFrame()` 在棋盘对象/尺寸变化时重置缩放和平移；平时只 update。
 - `shared::LifeStats`、`shared::AppSettings` 是按值传递的小型值对象，允许拷贝。
 - 棋盘尺寸变化会替换 Model 的 `Grid` 对象；Controller 随后调用 `setBoard()` 更新指针。
 - Model 的 `stats()` 是 O(1) 缓存；View 不逐帧扫描棋盘。

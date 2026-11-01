@@ -5,6 +5,8 @@
 #include "shared/app_settings.h"
 #include "service/settings_error.h"
 
+#include <memory>
+
 class QMainWindow;
 
 namespace lifegame::model
@@ -27,11 +29,11 @@ namespace lifegame::controller
 {
 
 class BoardController;
+class SessionService;
 class SimulationController;
 
-/// Application/session coordinator: restore on start, persist on exit,
-/// apply the settings dialog. FileController also receives file services, but
-/// this controller owns the settings store and session lifecycle.
+/// Application/session coordinator: restore on start, persist on exit.
+/// The SettingsController owns the dialog; file services live elsewhere.
 class SessionController : public QObject
 {
     Q_OBJECT
@@ -45,6 +47,7 @@ public:
                       QMainWindow* window,
                       view::MessageSink* messages,
                       QObject* parent = nullptr);
+    ~SessionController() override;
 
     /// Returns true when a persisted board was restored.
     bool restore();
@@ -53,17 +56,14 @@ public:
 
     const shared::AppSettings& settings() const;
 
-public slots:
-    void openSettings();
-
-private:
-    void applySettings();
+    /// Apply the three editable settings fields (snapshot/jump/size).
+    void applySettings(const shared::AppSettings& values);
 
     model::LifeModel* m_model = nullptr;
     view::ControlPanel* m_panel = nullptr;
     SimulationController* m_simulation = nullptr;
     BoardController* m_board = nullptr;
-    service::SettingsStore* m_store = nullptr;
+    std::unique_ptr<SessionService> m_service;
     QMainWindow* m_window = nullptr;
     view::MessageSink* m_messages = nullptr;
     shared::AppSettings m_settings;

@@ -1,11 +1,16 @@
 #pragma once
 
+#include <QElapsedTimer>
+
+#include <optional>
 #include <QImage>
 #include <QPixmap>
 #include <QPoint>
 #include <QRectF>
 #include <QVector>
 #include <QWidget>
+
+#include "view/view_state.h"
 
 namespace lifegame::domain
 {
@@ -35,6 +40,15 @@ public:
     void setPopulation(int population);
     void setRunning(bool running);
     void refresh();
+
+    /// Atomic board frame update used by BoardPresenter.
+    void applyFrame(const BoardFrame& frame);
+
+    /// Last paint duration, used by the presenter's frame-budget decision.
+    double lastPaintDurationMs() const
+    {
+        return m_last_paint_ms;
+    }
 
     QSize sizeHint() const override;
     QSize minimumSizeHint() const override;
@@ -71,12 +85,8 @@ private:
     QPointF boardTopLeft() const;
     double fitCellPixels() const;
     bool cellFromPosition(const QPoint& position, int* row, int* col) const;
-    bool visibleCellRange(const QRectF& boardRect,
-                          double cellPixels,
-                          int* firstRow,
-                          int* lastRow,
-                          int* firstCol,
-                          int* lastCol) const;
+    std::optional<VisibleCellRange> visibleCellRange(const QRectF& boardRect,
+                                                     double cellPixels) const;
     void clampPan();
     void zoomBy(double factor);
 
@@ -92,28 +102,19 @@ private:
                            double gap,
                            double radius,
                            bool interactive,
-                           int firstRow,
-                           int lastRow,
-                           int firstCol,
-                           int lastCol) const;
+                           const VisibleCellRange& range) const;
     void drawCellsAsImage(QPainter& painter,
                           const domain::Grid& board,
                           const QRectF& boardRect,
                           bool interactive,
-                          int firstRow,
-                          int lastRow,
-                          int firstCol,
-                          int lastCol) const;
+                          const VisibleCellRange& range) const;
     void updateGridPixmap(const QRectF& boardRect, double cellPixels) const;
     void drawGridLines(QPainter& painter, const QRectF& boardRect, double cellPixels, int stride = 1) const;
     void drawGridLinesRange(QPainter& painter,
                             const QRectF& boardRect,
                             double cellPixels,
                             int stride,
-                            int firstRow,
-                            int lastRow,
-                            int firstCol,
-                            int lastCol) const;
+                            const VisibleCellRange& range) const;
 
     const domain::Grid* m_board = nullptr;
     int m_population = 0;
@@ -132,6 +133,7 @@ private:
     bool m_auto_fit = true;
     QPointF m_pan;
 
+    double m_last_paint_ms = 0.0;
     int m_hover_row = -1;
     int m_hover_col = -1;
     bool m_left_pressed = false;

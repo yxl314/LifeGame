@@ -192,8 +192,12 @@ bool LifeModel::toggleCell(int row, int col)
     }
 
     pauseForEdit();
-    const bool alive = m_board.toggleCell(row, col);
-    m_population += alive ? 1 : -1;
+    const std::optional<bool> state = m_board.toggleCell(row, col);
+    if (!state.has_value())
+    {
+        return false;
+    }
+    m_population += *state ? 1 : -1;
     invalidateHistoryFrom(m_generation);
     emit boardChanged();
     emit statusChanged(stats());
@@ -239,22 +243,22 @@ CommandResult LifeModel::placePattern(const domain::Pattern& pattern, int center
     {
         return CommandResult::Busy;
     }
-    if (pattern.width <= 0 || pattern.height <= 0 || pattern.population() == 0 ||
+    if (pattern.width() <= 0 || pattern.height() <= 0 || pattern.population() == 0 ||
         !pattern.isConsistent())
     {
-        qCWarning(lcModel) << "pattern rejected reason=invalid_pattern width=" << pattern.width
-                           << "height=" << pattern.height << "cells=" << pattern.cells.size();
+        qCWarning(lcModel) << "pattern rejected reason=invalid_pattern width=" << pattern.width()
+                           << "height=" << pattern.height() << "cells=" << pattern.cells().size();
         return CommandResult::InvalidPattern;
     }
 
-    const int topRow = centerRow - pattern.height / 2;
-    const int topCol = centerCol - pattern.width / 2;
+    const int topRow = centerRow - pattern.height() / 2;
+    const int topCol = centerCol - pattern.width() / 2;
 
     bool wouldChange = false;
     bool clipped = false;
-    for (int row = 0; row < pattern.height; ++row)
+    for (int row = 0; row < pattern.height(); ++row)
     {
-        for (int col = 0; col < pattern.width; ++col)
+        for (int col = 0; col < pattern.width(); ++col)
         {
             if (!pattern.alive(row, col))
             {
@@ -278,9 +282,9 @@ CommandResult LifeModel::placePattern(const domain::Pattern& pattern, int center
     }
 
     pauseForEdit();
-    for (int row = 0; row < pattern.height; ++row)
+    for (int row = 0; row < pattern.height(); ++row)
     {
-        for (int col = 0; col < pattern.width; ++col)
+        for (int col = 0; col < pattern.width(); ++col)
         {
             if (pattern.alive(row, col))
             {
@@ -290,8 +294,8 @@ CommandResult LifeModel::placePattern(const domain::Pattern& pattern, int center
     }
     m_population = m_board.population();
     invalidateHistoryFrom(m_generation);
-    qCDebug(lcModel) << "pattern placed center" << centerRow << centerCol << "size" << pattern.width << 'x'
-                     << pattern.height << "clipped" << clipped;
+    qCDebug(lcModel) << "pattern placed center" << centerRow << centerCol << "size" << pattern.width() << 'x'
+                     << pattern.height() << "clipped" << clipped;
     emit boardChanged();
     emit statusChanged(stats());
     return clipped ? CommandResult::Clipped : CommandResult::Success;
@@ -474,16 +478,16 @@ CommandResult LifeModel::loadDocument(const domain::DecodedDocument& document)
     }
 
     const domain::Pattern& pattern = document.pattern;
-    if (!pattern.isConsistent() || pattern.width <= 0 || pattern.height <= 0)
+    if (!pattern.isConsistent() || pattern.width() <= 0 || pattern.height() <= 0)
     {
-        qCWarning(lcModel) << "document rejected reason=invalid_size width=" << pattern.width
-                           << "height=" << pattern.height;
+        qCWarning(lcModel) << "document rejected reason=invalid_size width=" << pattern.width()
+                           << "height=" << pattern.height();
         return CommandResult::InvalidPattern;
     }
-    if (pattern.width > domain::kMaxBoardWidth || pattern.height > domain::kMaxBoardHeight)
+    if (pattern.width() > domain::kMaxBoardWidth || pattern.height() > domain::kMaxBoardHeight)
     {
-        qCWarning(lcModel) << "document rejected reason=too_large width=" << pattern.width
-                           << "height=" << pattern.height;
+        qCWarning(lcModel) << "document rejected reason=too_large width=" << pattern.width()
+                           << "height=" << pattern.height();
         return CommandResult::TooLarge;
     }
 
@@ -500,17 +504,17 @@ CommandResult LifeModel::loadDocument(const domain::DecodedDocument& document)
         rule = parsed.rule;
     }
 
-    const int width = std::max(domain::kMinBoardExtent, pattern.width);
-    const int height = std::max(domain::kMinBoardExtent, pattern.height);
+    const int width = std::max(domain::kMinBoardExtent, pattern.width());
+    const int height = std::max(domain::kMinBoardExtent, pattern.height());
     std::unique_ptr<domain::Grid> board(new (std::nothrow) domain::Grid(width, height));
     if (!board)
     {
         qCCritical(lcModel) << "document load failed reason=out_of_memory";
         return CommandResult::OutOfMemory;
     }
-    for (int row = 0; row < pattern.height; ++row)
+    for (int row = 0; row < pattern.height(); ++row)
     {
-        for (int col = 0; col < pattern.width; ++col)
+        for (int col = 0; col < pattern.width(); ++col)
         {
             if (pattern.alive(row, col))
             {
@@ -660,8 +664,9 @@ CommandResult LifeModel::startJump(int targetGeneration)
     }
     else
     {
-        const domain::History::Snapshot* snapshot = m_history.snapshotAtOrBefore(targetGeneration);
-        if (snapshot == nullptr)
+        const std::optional<domain::History::Snapshot> snapshot =
+            m_history.snapshotAtOrBefore(targetGeneration);
+        if (!snapshot.has_value())
         {
             qCInfo(lcModel) << "jump rejected reason=no_history target=" << targetGeneration;
             return CommandResult::NoHistory;
@@ -696,73 +701,28 @@ CommandResult LifeModel::startJump(int targetGeneration)
     qCInfo(lcModel) << "jump started from" << startGeneration << "to" << targetGeneration << "replay" << total
                     << "forward" << forward;
 
-    const int target = targetGeneration;
-    const int start = startGeneration;
+    JumpRequest request;
+    request.startBoard = std::move(startBoard);
+    request.startGeneration = startGeneration;
+    request.targetGeneration = targetGeneration;
+    request.totalGenerations = total;
+    request.forward = forward;
+    request.rule = rule;
+    request.boundary = boundary;
+    request.epoch = epoch;
+    request.interval = interval;
+    request.cancel = std::move(cancel);
+    request.reportProgress = [this](int done) {
+        QMetaObject::invokeMethod(this,
+                                  "reportJumpProgress",
+                                  Qt::QueuedConnection,
+                                  Q_ARG(int, done));
+    };
+
     const QFuture<JumpOutcome> future = QtConcurrent::run(
-        [this, startBoard, start, target, total, forward, rule, boundary, epoch, interval, cancel]() noexcept {
-            JumpOutcome outcome;
-            outcome.generation = target;
-
-            auto current = std::unique_ptr<domain::Grid>(new (std::nothrow) domain::Grid(*startBoard));
-            auto next = std::unique_ptr<domain::Grid>(
-                new (std::nothrow) domain::Grid(startBoard->width(), startBoard->height()));
-            if (!current || !next)
-            {
-                outcome.error = CommandResult::OutOfMemory;
-                return outcome;
-            }
-
-            for (int generation = start + 1; generation <= target; ++generation)
-            {
-                domain::Grid::computeNext(*current, next.get(), rule, boundary);
-                std::swap(current, next);
-
-                if (cancel->load())
-                {
-                    outcome.cancelled = true;
-                    return outcome;
-                }
-
-                const int done = generation - start;
-
-                if (forward && (generation - epoch) % interval == 0)
-                {
-                    auto snapshot = std::make_shared<const domain::PackedGrid>(*current);
-                    if (snapshot)
-                    {
-                        outcome.snapshots.push_back({generation, std::move(snapshot)});
-                        if (outcome.snapshots.size() >
-                            static_cast<std::size_t>(domain::History::kMaxSnapshots))
-                        {
-                            outcome.snapshots.erase(outcome.snapshots.begin());
-                        }
-                    }
-                }
-
-                if (done % 64 == 0 && current->population() == 0)
-                {
-                    break;
-                }
-
-                if (done % 64 == 0)
-                {
-                    QMetaObject::invokeMethod(this,
-                                              "reportJumpProgress",
-                                              Qt::QueuedConnection,
-                                              Q_ARG(int, done));
-                }
-            }
-
-            outcome.board = makeSnapshot(*current);
-            if (!outcome.board)
-            {
-                outcome.error = CommandResult::OutOfMemory;
-            }
-            return outcome;
-        });
-
+        [request = std::move(request)]() noexcept { return runJump(request); });
     m_jumpWatcher.setFuture(future);
-    emit jumpStarted(shared::JumpInfo{m_generation, target, total});
+    emit jumpStarted(shared::JumpInfo{m_generation, targetGeneration, total});
     return CommandResult::Success;
 }
 

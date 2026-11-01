@@ -18,13 +18,22 @@ struct RleReadResult
     QString detail;
 };
 
-/// File I/O only; RLE parsing is delegated to the pure domain codec.
-class RleFileService
+/// Output port used by FileController and replaceable in tests.
+class RleFilePort
 {
 public:
-    RleReadResult read(const QString& path) const;
+    virtual ~RleFilePort() = default;
+    virtual RleReadResult read(const QString& path) const = 0;
+    virtual FileError write(const QString& path, const QString& text, QString* detail = nullptr) const = 0;
+};
 
-    FileError write(const QString& path, const QString& text, QString* detail = nullptr) const;
+/// File I/O only; RLE parsing is delegated to the pure domain codec.
+class RleFileService : public RleFilePort
+{
+public:
+    RleReadResult read(const QString& path) const override;
+
+    FileError write(const QString& path, const QString& text, QString* detail = nullptr) const override;
 };
 
 } // namespace lifegame::service

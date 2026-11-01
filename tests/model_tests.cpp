@@ -200,7 +200,6 @@ void ModelTests::resizeAndLoadDocument()
     // Invalid rule in the document is rejected and leaves the model untouched.
     lifegame::domain::DecodedDocument invalid;
     invalid.pattern = lifegame::domain::Pattern::fromAscii("bad", {"O"});
-    invalid.pattern.width = 1;
     invalid.rule = "not-a-rule";
     VERIFY_FAIL(padded.loadDocument(invalid));
     QCOMPARE(padded.stats().population, 5);
@@ -397,10 +396,8 @@ void ModelTests::commandResults()
     lifegame::domain::Pattern empty;
     QCOMPARE(model.placePattern(empty, 0, 0), CommandResult::InvalidPattern);
 
-    lifegame::domain::Pattern inconsistent;
-    inconsistent.width = 10;
-    inconsistent.height = 10;
-    inconsistent.cells.assign(1, 1);
+    const lifegame::domain::Pattern inconsistent(
+        "inconsistent", 10, 10, std::vector<lifegame::domain::Cell>(1, 1));
     QCOMPARE(model.placePattern(inconsistent, 0, 0), CommandResult::InvalidPattern);
 
     lifegame::domain::DecodedDocument invalidRule;
@@ -447,8 +444,8 @@ void ModelTests::largeBoard()
     QVERIFY(decoded.document.has_value());
     if (decoded.document)
     {
-        QCOMPARE(decoded.document->pattern.width, 1500);
-        QCOMPARE(decoded.document->pattern.height, 1000);
+        QCOMPARE(decoded.document->pattern.width(), 1500);
+        QCOMPARE(decoded.document->pattern.height(), 1000);
     }
 }
 

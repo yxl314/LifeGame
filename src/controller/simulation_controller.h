@@ -3,6 +3,7 @@
 #include <QObject>
 
 #include "model/stall_reason.h"
+#include "shared/app_settings.h"
 
 class QTimer;
 class QAction;
@@ -61,7 +62,7 @@ private:
     view::ControlPanel* m_panel = nullptr;
     view::MessageSink* m_messages = nullptr;
     QTimer* m_timer = nullptr;
-    int m_speed = 10;
+    int m_speed = shared::limits::kDefaultSpeed;
     QAction* m_playAction = nullptr;
 };
 

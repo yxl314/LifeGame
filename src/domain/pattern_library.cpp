@@ -59,7 +59,7 @@ const Pattern* findBuiltinPattern(std::string_view id)
 {
     const auto& patterns = builtinPatterns();
     const auto it = std::find_if(patterns.begin(), patterns.end(), [id](const Pattern& pattern) {
-        return pattern.id == id;
+        return pattern.id() == id;
     });
     return it == patterns.end() ? nullptr : &*it;
 }

@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "controller/board_controller.h"
+#include "controller/board_presenter.h"
 #include "controller/file_controller.h"
 #include "controller/jump_controller.h"
 #include "controller/line_raster.h"
@@ -153,6 +154,7 @@ void ControllerTests::boardControllerEditsAndStamps()
     lifegame::view::PatternCatalog catalog;
     FakeMessages messages;
 
+    lifegame::controller::BoardPresenter presenter(&model, &view, &panel, nullptr);
     lifegame::controller::BoardController controller(&model, &view, &panel, &catalog, &messages, nullptr);
 
     const auto statLabels = panel.findChildren<QLabel*>(QStringLiteral("StatValue"));
@@ -464,6 +466,7 @@ void ControllerTests::sessionControllerRoundTrip()
         lifegame::view::BoardView view;
         lifegame::view::PatternCatalog catalog;
         FakeMessages messages;
+        lifegame::controller::BoardPresenter presenter(&model, &view, &panel, nullptr);
         lifegame::controller::BoardController board(&model, &view, &panel, &catalog, &messages, nullptr);
         lifegame::controller::SimulationController simulation(&model, &panel, &messages, nullptr);
 
@@ -486,6 +489,7 @@ void ControllerTests::sessionControllerRoundTrip()
         lifegame::view::BoardView view;
         lifegame::view::PatternCatalog catalog;
         FakeMessages messages;
+        lifegame::controller::BoardPresenter presenter(&model, &view, &panel, nullptr);
         lifegame::controller::BoardController board(&model, &view, &panel, &catalog, &messages, nullptr);
         lifegame::controller::SimulationController simulation(&model, &panel, &messages, nullptr);
 

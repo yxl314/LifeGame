@@ -21,6 +21,7 @@
 #include "model/command_result.h"
 #include "shared/jump_info.h"
 #include "shared/life_stats.h"
+#include "model/jump_runner.h"
 #include "model/simulation_engine.h"
 #include "model/stall_reason.h"
 
@@ -122,21 +123,6 @@ private slots:
     void reportJumpProgress(int done);
 
 private:
-    struct JumpSnapshot
-    {
-        int generation = 0;
-        std::shared_ptr<const domain::PackedGrid> packedBoard;
-    };
-
-    struct JumpOutcome
-    {
-        std::shared_ptr<const domain::Grid> board;
-        std::vector<JumpSnapshot> snapshots;
-        int generation = 0;
-        bool cancelled = false;
-        CommandResult error = CommandResult::Success;
-    };
-
     void pauseForEdit();
     void resetHistory();
     void recordSnapshot();

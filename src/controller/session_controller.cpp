@@ -2,8 +2,8 @@
 
 #include "controller/controller_log.h"
 #include "controller/error_text.h"
+#include "controller/session_service.h"
 
-#include <QDialog>
 #include <QMainWindow>
 
 #include "controller/board_controller.h"
@@ -14,7 +14,6 @@
 #include "service/settings_store.h"
 #include "view/control_panel.h"
 #include "view/interfaces.h"
-#include "view/settings_dialog.h"
 
 namespace lifegame::controller
 {
@@ -32,11 +31,13 @@ SessionController::SessionController(model::LifeModel* model,
       m_panel(panel),
       m_simulation(simulation),
       m_board(board),
-      m_store(store),
+      m_service(std::make_unique<SessionService>(model, store)),
       m_window(window),
       m_messages(messages)
 {
 }
+
+SessionController::~SessionController() = default;
 
 const shared::AppSettings& SessionController::settings() const
 {
@@ -45,68 +46,37 @@ const shared::AppSettings& SessionController::settings() const
 
 bool SessionController::restore()
 {
-    const service::SettingsLoadResult loadedState = m_store->load();
-    const service::SessionState state = loadedState.state;
-    m_settings = shared::normalized(state.settings);
+    const SessionRestoreResult result = m_service->restore();
+    m_settings = result.settings;
 
-    qCInfo(lcController) << "session restore start has_board=" << !state.boardRle.isEmpty()
-                         << "generation=" << state.generation << "rule=" << state.ruleNotation
-                         << "boundary=" << state.boundary;
-    if (loadedState.error != service::SettingsError::None)
+    qCInfo(lcController) << "session restore start has_stored_board=" << result.hadStoredBoard
+                         << "restored=" << result.restored;
+    if (result.error != service::SettingsError::None)
     {
         qCWarning(lcController) << "settings restore failed error="
-                                << service::settingsErrorName(loadedState.error);
+                                << service::settingsErrorName(result.error);
         if (m_messages != nullptr)
         {
-            m_messages->showMessage(settingsErrorText(loadedState.error, loadedState.detail), 8000);
+            m_messages->showMessage(settingsErrorText(result.error, result.detail), 8000);
         }
     }
 
-    m_model->setSnapshotInterval(m_settings.snapshotInterval);
-    m_model->setBoundary(state.boundary == 1 ? domain::Boundary::Wrap : domain::Boundary::Dead);
-    m_model->setRuleByNotation(state.ruleNotation.toStdString());
-
-    bool restored = false;
-    if (!state.boardRle.isEmpty())
+    if (result.hadStoredBoard && !result.restored)
     {
-        const domain::RleDecodeResult decoded = domain::decodeRle(state.boardRle.toStdString());
-        if (decoded.document.has_value())
+        if (result.decodeFailed)
         {
-            const model::CommandResult loaded = m_model->loadDocument(*decoded.document);
-            if (model::succeeded(loaded))
-            {
-                restored = true;
-                if (state.generation > 0)
-                {
-                    (void)m_model->setGeneration(state.generation);
-                }
-            }
-            else if (m_messages != nullptr)
-            {
-                m_messages->showMessage(
-                    tr("上次会话的棋盘无法恢复：%1 已改为示例棋盘。").arg(commandResultText(loaded)), 8000);
-            }
-        }
-        else
-        {
-            qCWarning(lcController) << "stored RLE decode failed code="
-                                    << domain::rleErrorName(decoded.error.code) << "line="
-                                    << decoded.error.line << "column=" << decoded.error.column
-                                    << "length=" << state.boardRle.size();
+            qCWarning(lcController) << "stored RLE decode failed";
             if (m_messages != nullptr)
             {
                 m_messages->showMessage(tr("上次会话的棋盘无法解析，已改为示例棋盘。"), 8000);
             }
         }
-    }
-
-    if (!restored)
-    {
-        const model::CommandResult resized =
-            m_model->resizeBoard(domain::kDefaultBoardWidth, domain::kDefaultBoardHeight);
-        if (model::failed(resized) && m_messages != nullptr)
+        else if (result.loadFailed && m_messages != nullptr)
         {
-            m_messages->showMessage(commandResultText(resized), 5000);
+            m_messages->showMessage(
+                tr("上次会话的棋盘无法恢复：%1 已改为示例棋盘。")
+                    .arg(commandResultText(result.loadResult)),
+                8000);
         }
     }
 
@@ -117,17 +87,16 @@ bool SessionController::restore()
     m_simulation->setSpeedExternal(m_settings.speed);
     m_board->setGridVisible(m_settings.gridVisible);
 
-    if (m_window != nullptr && !state.windowGeometry.isEmpty())
+    if (m_window != nullptr && !result.windowGeometry.isEmpty() &&
+        !m_window->restoreGeometry(result.windowGeometry))
     {
-        if (!m_window->restoreGeometry(state.windowGeometry))
-        {
-            qCDebug(lcController) << "window geometry restore failed";
-        }
+        qCDebug(lcController) << "window geometry restore failed";
     }
 
-    qCInfo(lcController) << "session restore done restored=" << restored << "board=" << m_model->width() << 'x'
-                         << m_model->height() << "generation" << m_model->stats().generation;
-    return restored;
+    qCInfo(lcController) << "session restore done restored=" << result.restored << "board="
+                         << m_model->width() << 'x' << m_model->height() << "generation"
+                         << m_model->stats().generation;
+    return result.restored;
 }
 
 service::SettingsError SessionController::save()
@@ -137,19 +106,9 @@ service::SettingsError SessionController::save()
     m_settings.gridVisible = m_board->gridVisible();
     m_settings = shared::normalized(m_settings);
 
-    service::SessionState state;
-    state.settings = m_settings;
-    state.boardRle = QString::fromStdString(m_model->toRle("life-game"));
-    state.ruleNotation = QString::fromStdString(m_model->rule().notation());
-    state.boundary = m_model->boundary() == domain::Boundary::Wrap ? 1 : 0;
-    state.generation = m_model->stats().generation;
-    if (m_window != nullptr)
-    {
-        state.windowGeometry = m_window->saveGeometry();
-    }
-
+    const QByteArray geometry = m_window != nullptr ? m_window->saveGeometry() : QByteArray();
     QString detail;
-    const service::SettingsError error = m_store->save(state, &detail);
+    const service::SettingsError error = m_service->save(m_settings, geometry, &detail);
     if (error != service::SettingsError::None)
     {
         qCWarning(lcController) << "session save failed error=" << service::settingsErrorName(error);
@@ -166,40 +125,9 @@ service::SettingsError SessionController::save()
     return error;
 }
 
-void SessionController::openSettings()
+void SessionController::applySettings(const shared::AppSettings& values)
 {
-    if (m_model->isJumping())
-    {
-        if (m_messages != nullptr)
-        {
-            m_messages->showMessage(tr("跳转进行中，请稍后再修改设置。"), 3000);
-        }
-        return;
-    }
-
-    view::SettingsDialog dialog(m_window);
-    dialog.setValues(m_settings);
-    if (dialog.exec() != QDialog::Accepted)
-    {
-        qCDebug(lcController) << "settings dialog cancelled";
-        return;
-    }
-
-    m_settings = shared::normalized(dialog.values());
-
-    applySettings();
-    save();
-
-    qCInfo(lcController) << "settings applied jump_step=" << m_settings.jumpStep << "size_step="
-                         << m_settings.sizeStep << "snapshot_interval=" << m_settings.snapshotInterval;
-    if (m_messages != nullptr)
-    {
-        m_messages->showMessage(tr("设置已保存。"), 3000);
-    }
-}
-
-void SessionController::applySettings()
-{
+    m_settings = shared::normalized(values);
     const model::CommandResult result = m_model->setSnapshotInterval(m_settings.snapshotInterval);
     if (model::failed(result) && m_messages != nullptr)
     {
@@ -207,6 +135,8 @@ void SessionController::applySettings()
     }
     m_panel->setJumpStep(m_settings.jumpStep);
     m_panel->setSizeStep(m_settings.sizeStep);
+    qCInfo(lcController) << "settings applied jump_step=" << m_settings.jumpStep << "size_step="
+                         << m_settings.sizeStep << "snapshot_interval=" << m_settings.snapshotInterval;
 }
 
 } // namespace lifegame::controller

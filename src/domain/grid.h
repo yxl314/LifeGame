@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 #include "domain/board_limits.h"
@@ -56,9 +57,8 @@ public:
     bool cell(int row, int col) const;
     void setCell(int row, int col, bool alive);
 
-    /// Toggle a cell and return its new state. Out-of-bounds returns false
-    /// (which is also the state after toggling an alive cell to dead).
-    bool toggleCell(int row, int col);
+    /// Toggle an in-bounds cell and return its new state; nullopt for OOB.
+    std::optional<bool> toggleCell(int row, int col);
 
     int population() const;
     int neighbourCount(int row, int col, Boundary boundary) const;
@@ -70,9 +70,9 @@ public:
 
     bool equals(const Grid& other) const;
 
-    const std::vector<Cell>& cells() const
+    std::size_t activeCellStorage() const noexcept
     {
-        return m_cells;
+        return m_cells.size();
     }
 
     const Cell* data() const

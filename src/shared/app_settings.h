@@ -16,6 +16,7 @@ inline constexpr int kSnapshotIntervalMin = 10;
 inline constexpr int kSnapshotIntervalMax = 1000;
 inline constexpr int kSpeedMin = 0;
 inline constexpr int kSpeedMax = 120;
+inline constexpr int kDefaultSpeed = 10;
 inline constexpr int kDensityMin = 5;
 inline constexpr int kDensityMax = 90;
 
@@ -31,7 +32,7 @@ struct AppSettings
     int sizeStep = 5;
     int snapshotInterval = 100;
     int density = 30;
-    int speed = 10;
+    int speed = limits::kDefaultSpeed;
     bool gridVisible = true;
 };
 

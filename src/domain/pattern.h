@@ -12,15 +12,34 @@ namespace lifegame::domain
 /**
  * A rectangular block of cells.
  *
- * The pattern carries a stable `id` but no display text: names, categories and
- * descriptions are presentation concerns owned by the view layer.
+ * Fields are private: callers use accessors and the constructor/factory. The
+ * id is stable but carries no display text (names belong to the view).
  */
-struct Pattern
+class Pattern
 {
-    std::string id;
-    int width = 0;
-    int height = 0;
-    std::vector<Cell> cells;
+public:
+    Pattern() = default;
+    Pattern(std::string id, int width, int height, std::vector<Cell> cells);
+
+    const std::string& id() const noexcept
+    {
+        return m_id;
+    }
+
+    int width() const noexcept
+    {
+        return m_width;
+    }
+
+    int height() const noexcept
+    {
+        return m_height;
+    }
+
+    const std::vector<Cell>& cells() const noexcept
+    {
+        return m_cells;
+    }
 
     bool alive(int row, int col) const;
     int population() const;
@@ -35,6 +54,12 @@ struct Pattern
      * Rows may have different lengths and are padded on the right.
      */
     static Pattern fromAscii(std::string id, const std::vector<std::string>& rows);
+
+private:
+    std::string m_id;
+    int m_width = 0;
+    int m_height = 0;
+    std::vector<Cell> m_cells;
 };
 
 } // namespace lifegame::domain

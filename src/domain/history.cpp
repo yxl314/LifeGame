@@ -41,7 +41,7 @@ void History::recordPacked(int generation, std::shared_ptr<const PackedGrid> boa
         m_snapshots.push_back({generation, std::move(board)});
         return;
     }
-    if (generation <= m_snapshots.back().generation || !aligned(generation))
+    if (!shouldRecord(generation))
     {
         return;
     }
@@ -84,16 +84,16 @@ int History::oldestGeneration() const
     return m_snapshots.empty() ? 0 : m_snapshots.front().generation;
 }
 
-const History::Snapshot* History::snapshotAtOrBefore(int generation) const
+std::optional<History::Snapshot> History::snapshotAtOrBefore(int generation) const
 {
     for (auto it = m_snapshots.rbegin(); it != m_snapshots.rend(); ++it)
     {
         if (it->generation <= generation)
         {
-            return &*it;
+            return *it;
         }
     }
-    return nullptr;
+    return std::nullopt;
 }
 
 bool History::aligned(int generation) const

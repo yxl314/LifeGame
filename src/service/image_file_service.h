@@ -9,10 +9,17 @@ class QImage;
 namespace lifegame::service
 {
 
-class ImageFileService
+class ImageFilePort
 {
 public:
-    FileError savePng(const QImage& image, const QString& path, QString* detail = nullptr) const;
+    virtual ~ImageFilePort() = default;
+    virtual FileError savePng(const QImage& image, const QString& path, QString* detail = nullptr) const = 0;
+};
+
+class ImageFileService : public ImageFilePort
+{
+public:
+    FileError savePng(const QImage& image, const QString& path, QString* detail = nullptr) const override;
 };
 
 } // namespace lifegame::service
