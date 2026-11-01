@@ -188,6 +188,9 @@ FileController::openRle()
 - 每一步的 `Grid` 输出通过 vector move 交给 Model；不再使用 1.5 MB 的内联数组。
 - 大棋盘在 View 中超过 25 万格时强制走 QImage 缩放路径，避免 150 万次
   `drawRect`；低缩放时绘制粗网格（约每 3 屏幕像素一条），网格开关仍然可见。
+- View 只遍历与窗口相交的可见 cell 范围；缩放/平移后不再重建整张棋盘的图像。
+- 大棋盘刷新读取 `QScreen::refreshRate()`：屏幕刷新率 ≥ 当前代速时逐代刷新，
+  只有屏幕刷新率不足时才合并。
 - PNG 导出仍限制单边 4096 px；1500 × 1000 导出为约 3032 × 2032，
   不会按 48 px/格申请数十 GiB。
 - 快照是 1 bit/cell 的 `PackedGrid`；默认 64 张在 1500 × 1000 下约 12 MB。

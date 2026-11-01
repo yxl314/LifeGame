@@ -254,6 +254,49 @@ void BoardView::zoomBy(double factor)
     update();
 }
 
+bool BoardView::visibleCellRange(const QRectF& boardRect,
+                                 double cellPixelsValue,
+                                 int* firstRow,
+                                 int* lastRow,
+                                 int* firstCol,
+                                 int* lastCol) const
+{
+    if (cellPixelsValue <= 0.0 || boardWidth() <= 0 || boardHeight() <= 0)
+    {
+        return false;
+    }
+
+    const QRectF visible = boardRect.intersected(QRectF(rect()));
+    if (visible.isEmpty())
+    {
+        return false;
+    }
+
+    const int minRow = std::clamp(
+        static_cast<int>(std::floor((visible.top() - boardRect.top()) / cellPixelsValue)), 0, boardHeight() - 1);
+    const int maxRow = std::clamp(
+        static_cast<int>(std::ceil((visible.bottom() - boardRect.top()) / cellPixelsValue)) - 1,
+        0,
+        boardHeight() - 1);
+    const int minCol = std::clamp(
+        static_cast<int>(std::floor((visible.left() - boardRect.left()) / cellPixelsValue)), 0, boardWidth() - 1);
+    const int maxCol = std::clamp(
+        static_cast<int>(std::ceil((visible.right() - boardRect.left()) / cellPixelsValue)) - 1,
+        0,
+        boardWidth() - 1);
+
+    if (minRow > maxRow || minCol > maxCol)
+    {
+        return false;
+    }
+
+    *firstRow = minRow;
+    *lastRow = maxRow;
+    *firstCol = minCol;
+    *lastCol = maxCol;
+    return true;
+}
+
 void BoardView::drawBoard(QPainter& painter,
                           const domain::Grid& board,
                           const QPointF& topLeft,
@@ -274,15 +317,34 @@ void BoardView::drawBoard(QPainter& painter,
     const double gap = cellPixelsValue >= 7.0 ? 1.0 : (cellPixelsValue >= 4.0 ? 0.5 : 0.0);
     const double radius = std::min(2.5, cellPixelsValue * 0.2);
 
+    int firstRow = 0;
+    int lastRow = height - 1;
+    int firstCol = 0;
+    int lastCol = width - 1;
+    if (interactive && !visibleCellRange(boardRect, cellPixelsValue, &firstRow, &lastRow, &firstCol, &lastCol))
+    {
+        return;
+    }
+
     const bool tooManyCells = width * height > kDetailedCellLimit;
     if ((m_animating && interactive) || cellPixelsValue < kCellImageThreshold || tooManyCells)
     {
-        drawCellsAsImage(painter, board, boardRect, interactive);
+        drawCellsAsImage(painter, board, boardRect, interactive, firstRow, lastRow, firstCol, lastCol);
     }
     else
     {
         painter.fillRect(boardRect, kBoardBackground);
-        drawCellsDetailed(painter, board, topLeft, cellPixelsValue, gap, radius, interactive);
+        drawCellsDetailed(painter,
+                          board,
+                          topLeft,
+                          cellPixelsValue,
+                          gap,
+                          radius,
+                          interactive,
+                          firstRow,
+                          lastRow,
+                          firstCol,
+                          lastCol);
     }
 
     if (interactive && !m_preview.isEmpty() && m_hover_row >= 0 && m_hover_col >= 0)
@@ -324,14 +386,22 @@ void BoardView::drawBoard(QPainter& painter,
     {
         const double dpr = devicePixelRatioF();
         const double cachePixels = boardRect.width() * boardRect.height() * dpr * dpr;
-        if (cachePixels <= kGridCacheMaxPixels)
+        const bool fullBoardVisible = QRectF(rect()).contains(boardRect);
+        if (cachePixels <= kGridCacheMaxPixels && fullBoardVisible)
         {
             updateGridPixmap(boardRect, cellPixelsValue);
             painter.drawPixmap(boardRect.topLeft(), m_grid_pixmap);
         }
         else
         {
-            drawGridLines(painter, boardRect, cellPixelsValue);
+            drawGridLinesRange(painter,
+                               boardRect,
+                               cellPixelsValue,
+                               1,
+                               firstRow,
+                               lastRow,
+                               firstCol,
+                               lastCol);
         }
     }
     else if (m_grid_visible && cellPixelsValue > 0.0)
@@ -340,7 +410,14 @@ void BoardView::drawBoard(QPainter& painter,
         // Draw a coarse grid every N cells instead of pretending the toggle
         // did nothing.
         const int stride = std::max(1, static_cast<int>(std::ceil(3.0 / cellPixelsValue)));
-        drawGridLines(painter, boardRect, cellPixelsValue, stride);
+        drawGridLinesRange(painter,
+                           boardRect,
+                           cellPixelsValue,
+                           stride,
+                           firstRow,
+                           lastRow,
+                           firstCol,
+                           lastCol);
     }
 
     if (interactive && m_hover_row >= 0 && m_hover_col >= 0)
@@ -367,18 +444,31 @@ void BoardView::drawGridLines(QPainter& painter,
                               double cellPixelsValue,
                               int stride) const
 {
+    drawGridLinesRange(painter, boardRect, cellPixelsValue, stride, 0, boardHeight() - 1, 0, boardWidth() - 1);
+}
+
+void BoardView::drawGridLinesRange(QPainter& painter,
+                                   const QRectF& boardRect,
+                                   double cellPixelsValue,
+                                   int stride,
+                                   int firstRow,
+                                   int lastRow,
+                                   int firstCol,
+                                   int lastCol) const
+{
     painter.setPen(QPen(kGrid, 1.0));
     painter.setBrush(Qt::NoBrush);
 
-    const int width = boardWidth();
-    const int height = boardHeight();
     const int step = std::max(1, stride);
-    for (int col = 0; col <= width; col += step)
+    const int startCol = (firstCol / step) * step;
+    const int startRow = (firstRow / step) * step;
+
+    for (int col = startCol; col <= lastCol + 1; col += step)
     {
         const double x = boardRect.left() + static_cast<double>(col) * cellPixelsValue;
         painter.drawLine(QPointF(x, boardRect.top()), QPointF(x, boardRect.bottom()));
     }
-    for (int row = 0; row <= height; row += step)
+    for (int row = startRow; row <= lastRow + 1; row += step)
     {
         const double y = boardRect.top() + static_cast<double>(row) * cellPixelsValue;
         painter.drawLine(QPointF(boardRect.left(), y), QPointF(boardRect.right(), y));
@@ -415,22 +505,25 @@ void BoardView::drawCellsDetailed(QPainter& painter,
                                   double cellPixelsValue,
                                   double gap,
                                   double radius,
-                                  bool interactive) const
+                                  bool interactive,
+                                  int firstRow,
+                                  int lastRow,
+                                  int firstCol,
+                                  int lastCol) const
 {
     painter.setPen(Qt::NoPen);
     painter.setBrush(kAlive);
 
     const int width = board.width();
-    const int height = board.height();
     const domain::Cell* cells = board.data();
 
     const int hoverRow = interactive ? m_hover_row : -1;
     const int hoverCol = interactive ? m_hover_col : -1;
 
-    for (int row = 0; row < height; ++row)
+    for (int row = firstRow; row <= lastRow; ++row)
     {
         const std::size_t base = static_cast<std::size_t>(row) * static_cast<std::size_t>(width);
-        for (int col = 0; col < width; ++col)
+        for (int col = firstCol; col <= lastCol; ++col)
         {
             if (cells[base + static_cast<std::size_t>(col)] == domain::kDead)
             {
@@ -456,7 +549,7 @@ void BoardView::drawCellsDetailed(QPainter& painter,
         }
     }
 
-    if (hoverRow >= 0 && hoverCol >= 0 && hoverRow < height && hoverCol < width)
+    if (hoverRow >= firstRow && hoverRow <= lastRow && hoverCol >= firstCol && hoverCol <= lastCol)
     {
         painter.setBrush(kAliveHover);
         const QRectF cellRect(topLeft.x() + static_cast<double>(hoverCol) * cellPixelsValue + gap / 2.0,
@@ -477,13 +570,23 @@ void BoardView::drawCellsDetailed(QPainter& painter,
 void BoardView::drawCellsAsImage(QPainter& painter,
                                  const domain::Grid& board,
                                  const QRectF& boardRect,
-                                 bool interactive) const
+                                 bool interactive,
+                                 int firstRow,
+                                 int lastRow,
+                                 int firstCol,
+                                 int lastCol) const
 {
     const int width = board.width();
-    const int height = board.height();
-    if (m_cell_image.size() != QSize(width, height))
+    const int cols = lastCol - firstCol + 1;
+    const int rows = lastRow - firstRow + 1;
+    if (width <= 0 || cols <= 0 || rows <= 0)
     {
-        m_cell_image = QImage(width, height, QImage::Format_ARGB32_Premultiplied);
+        return;
+    }
+
+    if (m_cell_image.size() != QSize(cols, rows))
+    {
+        m_cell_image = QImage(cols, rows, QImage::Format_ARGB32_Premultiplied);
     }
 
     const QRgb alive = kAlive.rgba();
@@ -493,26 +596,31 @@ void BoardView::drawCellsAsImage(QPainter& painter,
     const int hoverRow = interactive ? m_hover_row : -1;
     const int hoverCol = interactive ? m_hover_col : -1;
 
-    for (int row = 0; row < height; ++row)
+    for (int row = 0; row < rows; ++row)
     {
         QRgb* line = reinterpret_cast<QRgb*>(m_cell_image.scanLine(row));
-        const int base = row * width;
-        for (int col = 0; col < width; ++col)
+        const int sourceRow = firstRow + row;
+        const int base = sourceRow * width + firstCol;
+        for (int col = 0; col < cols; ++col)
         {
             line[col] = cells[base + col] != domain::kDead ? alive : dead;
         }
-        if (row == hoverRow && hoverCol >= 0 && hoverCol < width &&
-            cells[base + hoverCol] != domain::kDead)
+        if (sourceRow == hoverRow && hoverCol >= firstCol && hoverCol <= lastCol &&
+            cells[sourceRow * width + hoverCol] != domain::kDead)
         {
-            line[hoverCol] = hover;
+            line[hoverCol - firstCol] = hover;
         }
     }
 
+    const QRectF target(boardRect.left() + static_cast<double>(firstCol) * (boardRect.width() / width),
+                        boardRect.top() + static_cast<double>(firstRow) * (boardRect.height() / board.height()),
+                        static_cast<double>(cols) * (boardRect.width() / width),
+                        static_cast<double>(rows) * (boardRect.height() / board.height()));
     painter.setRenderHint(QPainter::SmoothPixmapTransform, false);
     painter.setPen(Qt::NoPen);
     painter.setBrush(Qt::NoBrush);
     painter.setCompositionMode(QPainter::CompositionMode_Source);
-    painter.drawImage(boardRect, m_cell_image);
+    painter.drawImage(target, m_cell_image);
     painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
 }
 

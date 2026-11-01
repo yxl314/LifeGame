@@ -71,6 +71,12 @@ private:
     QPointF boardTopLeft() const;
     double fitCellPixels() const;
     bool cellFromPosition(const QPoint& position, int* row, int* col) const;
+    bool visibleCellRange(const QRectF& boardRect,
+                          double cellPixels,
+                          int* firstRow,
+                          int* lastRow,
+                          int* firstCol,
+                          int* lastCol) const;
     void clampPan();
     void zoomBy(double factor);
 
@@ -85,13 +91,29 @@ private:
                            double cellPixels,
                            double gap,
                            double radius,
-                           bool interactive) const;
+                           bool interactive,
+                           int firstRow,
+                           int lastRow,
+                           int firstCol,
+                           int lastCol) const;
     void drawCellsAsImage(QPainter& painter,
                           const domain::Grid& board,
                           const QRectF& boardRect,
-                          bool interactive) const;
+                          bool interactive,
+                          int firstRow,
+                          int lastRow,
+                          int firstCol,
+                          int lastCol) const;
     void updateGridPixmap(const QRectF& boardRect, double cellPixels) const;
     void drawGridLines(QPainter& painter, const QRectF& boardRect, double cellPixels, int stride = 1) const;
+    void drawGridLinesRange(QPainter& painter,
+                            const QRectF& boardRect,
+                            double cellPixels,
+                            int stride,
+                            int firstRow,
+                            int lastRow,
+                            int firstCol,
+                            int lastCol) const;
 
     const domain::Grid* m_board = nullptr;
     int m_population = 0;

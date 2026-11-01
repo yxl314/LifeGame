@@ -43,6 +43,10 @@ public:
     void setGridAction(QAction* action);
     bool gridVisible() const;
 
+    /// Called by SimulationController so coalescing only happens when the
+    /// screen refresh rate cannot keep up with the generation rate.
+    void setGenerationRate(int generationsPerSecond);
+
 public slots:
     void setGridVisible(bool visible);
     void clearBoard();
@@ -82,6 +86,8 @@ private:
     bool m_gridVisible = true;
     QAction* m_gridAction = nullptr;
     QTimer* m_viewTimer = nullptr;
+    int m_generationRate = 10;
+    int m_screenRefresh = 60;
 };
 
 } // namespace lifegame::controller

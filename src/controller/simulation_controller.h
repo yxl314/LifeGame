@@ -39,6 +39,9 @@ public:
     /// Used when restoring the session; never called while the slider is being dragged.
     void setSpeedExternal(int speed);
 
+signals:
+    void speedChanged(int speed);
+
 public slots:
     void toggleRunning();
     void stepOnce();

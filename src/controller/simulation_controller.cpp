@@ -86,6 +86,7 @@ void SimulationController::applySpeed(int speed)
 {
     m_speed = std::clamp(speed, shared::limits::kSpeedMin, shared::limits::kSpeedMax);
     m_panel->setSpeed(m_speed);
+    emit speedChanged(m_speed);
     if (m_speed <= 0)
     {
         m_timer->stop();

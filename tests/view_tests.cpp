@@ -48,6 +48,7 @@ private slots:
     void settingsDialogRoundTrip();
     void progressDialogProgrammaticCloseDoesNotCancel();
     void largeBoardRendersAndExports();
+    void zoomedBoardPaintsVisibleRegion();
 };
 
 void ViewTests::speedScale()
@@ -208,6 +209,32 @@ void ViewTests::largeBoardRendersAndExports()
     QVERIFY(image.height() > 0);
     QVERIFY(image.width() <= 4096);
     QVERIFY(image.height() <= 4096);
+}
+
+void ViewTests::zoomedBoardPaintsVisibleRegion()
+{
+    lifegame::domain::Grid grid(1500, 1000);
+    grid.setCell(750, 500, true);
+    grid.setCell(0, 0, true);
+    grid.setCell(999, 1499, true);
+
+    lifegame::view::BoardView view;
+    view.resize(400, 300);
+    view.setBoard(&grid);
+    view.setPopulation(grid.population());
+    view.show();
+    view.zoomIn();
+    view.zoomIn();
+
+    const QImage grabbed = view.grab().toImage();
+    QVERIFY(!grabbed.isNull());
+    QVERIFY(grabbed.width() > 0);
+    QVERIFY(grabbed.height() > 0);
+
+    const QImage exported = view.renderBoardImage();
+    QVERIFY(!exported.isNull());
+    QVERIFY(exported.width() > 0);
+    QVERIFY(exported.height() > 0);
 }
 
 QTEST_MAIN(ViewTests)

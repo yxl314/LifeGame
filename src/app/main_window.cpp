@@ -115,6 +115,11 @@ MainWindow::MainWindow(QWidget* parent, view::ConfirmSink* confirm)
     setupToolBar();
 
     m_simulationController->setPlayPauseAction(m_playAction);
+    m_boardController->setGenerationRate(m_simulationController->speed());
+    connect(m_simulationController,
+            &controller::SimulationController::speedChanged,
+            m_boardController,
+            &controller::BoardController::setGenerationRate);
     m_boardController->setGridAction(m_gridAction);
     m_configurationController->setRuleActionGroup(m_ruleGroup);
 
@@ -126,6 +131,11 @@ MainWindow::MainWindow(QWidget* parent, view::ConfirmSink* confirm)
 
     // Restore may have changed rule/boundary/grid/speed; resync the shell.
     m_simulationController->setPlayPauseAction(m_playAction);
+    m_boardController->setGenerationRate(m_simulationController->speed());
+    connect(m_simulationController,
+            &controller::SimulationController::speedChanged,
+            m_boardController,
+            &controller::BoardController::setGenerationRate);
     m_boardController->setGridAction(m_gridAction);
     m_configurationController->setRuleActionGroup(m_ruleGroup);
 

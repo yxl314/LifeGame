@@ -1,8 +1,12 @@
 #include "controller/board_controller.h"
 
 #include <QAction>
+#include <QGuiApplication>
+#include <QScreen>
 #include <QPoint>
 #include <QSignalBlocker>
+
+#include <cmath>
 #include <QTimer>
 
 #include "controller/error_text.h"
@@ -20,9 +24,8 @@ namespace lifegame::controller
 namespace
 {
 
-// Large boards are rendered at most ~60 fps; simulation can still advance faster.
+// Large boards are rendered only as fast as the screen can present them.
 constexpr int kLargeBoardCells = 250000;
-constexpr int kViewFrameMs = 16;
 
 } // namespace
 
@@ -60,9 +63,18 @@ BoardController::BoardController(model::LifeModel* model,
     m_panel->setPatternOptions(options);
     selectPattern(-1);
 
+    if (QScreen* screen = QGuiApplication::primaryScreen())
+    {
+        const qreal refresh = screen->refreshRate();
+        if (refresh > 0.0)
+        {
+            m_screenRefresh = std::max(1, static_cast<int>(std::lround(refresh)));
+        }
+    }
+
     m_viewTimer = new QTimer(this);
     m_viewTimer->setSingleShot(true);
-    m_viewTimer->setInterval(kViewFrameMs);
+    m_viewTimer->setInterval(std::max(1, 1000 / m_screenRefresh));
     connect(m_viewTimer, &QTimer::timeout, this, &BoardController::updateViews);
 
     connect(m_model, &model::LifeModel::boardChanged, this, &BoardController::requestViewUpdate);
@@ -105,10 +117,20 @@ void BoardController::syncViews()
     updateViews();
 }
 
+void BoardController::setGenerationRate(int generationsPerSecond)
+{
+    m_generationRate = std::max(0, generationsPerSecond);
+    if (m_viewTimer != nullptr && m_generationRate <= m_screenRefresh && m_viewTimer->isActive())
+    {
+        m_viewTimer->stop();
+        updateViews();
+    }
+}
+
 void BoardController::requestViewUpdate()
 {
     const int cells = m_model->width() * m_model->height();
-    if (!m_model->isRunning() || cells <= kLargeBoardCells)
+    if (!m_model->isRunning() || cells <= kLargeBoardCells || m_generationRate <= m_screenRefresh)
     {
         updateViews();
         return;
