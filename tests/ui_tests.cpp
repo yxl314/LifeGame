@@ -234,13 +234,13 @@ void UiTests::largeBoardResizeAndRender()
     QVERIFY(height != nullptr);
     QVERIFY(apply != nullptr);
 
-    width->setValue(1000);
-    height->setValue(1500);
+    width->setValue(1500);
+    height->setValue(1000);
     apply->click();
     QTest::qWait(150);
 
-    QCOMPARE(width->value(), 1000);
-    QCOMPARE(height->value(), 1500);
+    QCOMPARE(width->value(), 1500);
+    QCOMPARE(height->value(), 1000);
 
     auto* board = window.findChild<lifegame::view::BoardView*>();
     QVERIFY(board != nullptr);
@@ -264,7 +264,7 @@ void UiTests::largeBoardResizeAndRender()
     play->trigger();
     image = board->renderBoardImage();
     QVERIFY(!image.isNull());
-    window.grab().save(QStringLiteral("/tmp/lifegame-1000x1500.png"));
+    window.grab().save(QStringLiteral("/tmp/lifegame-1500x1000.png"));
     window.close();
 }
 

@@ -141,7 +141,7 @@ void testGridBasics()
     CHECK(empty.population() == 0);
     CHECK(!empty.cell(0, 0));
 
-    Grid clamped(1001, 1501);
+    Grid clamped(1501, 1001);
     CHECK(clamped.width() == Grid::kMaxWidth);
     CHECK(clamped.height() == Grid::kMaxHeight);
     CHECK(clamped.cells().size() == static_cast<std::size_t>(Grid::kMaxCells));
@@ -424,7 +424,7 @@ void testRleDecode()
     CHECK(commentOffset.error.column == 3);
     CHECK(decode("x = 3, y = 3, rule = nonsense\nbo$!").error.code == RleError::InvalidRule);
     CHECK(decode("x = 999999999, y = 3\nbo$!").error.code == RleError::InvalidHeader);
-    CHECK(decode("x = 1001, y = 3\nbo$!").error.code == RleError::TooLarge);
+    CHECK(decode("x = 1501, y = 3\nbo$!").error.code == RleError::TooLarge);
 
     // Regression: a crafted column accumulator used to overflow and write
     // outside the row vector. It must be rejected, never crash.
@@ -440,7 +440,7 @@ void testRleDecode()
 
     CHECK(decode("x = 1, y = 1\n1500001b!").error.code == RleError::RunTooLong);
     CHECK(decode("x = 1, y = 1\n10000001b!").error.code == RleError::RunTooLong);
-    CHECK(decode("x = 1, y = 1\n1001b!").error.code == RleError::TooLarge);
+    CHECK(decode("x = 1, y = 1\n1501b!").error.code == RleError::TooLarge);
 
     const auto empty = decode("x = 3, y = 2\n!");
     CHECK(empty.error.code == RleError::None);

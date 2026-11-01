@@ -15,9 +15,9 @@
 
 ![界面截图](docs/screenshot.png)
 
-1000 × 1500 大棋盘（150 万格，10 代/秒）渲染实测：
+1500 × 1000 大棋盘（150 万格，10 代/秒）渲染实测：
 
-![1000×1500 大棋盘](docs/screenshot-1000x1500.png)
+![1500×1000 大棋盘](docs/screenshot-1500x1000.png)
 
 ## 为什么值得作为范例
 
@@ -50,7 +50,7 @@
 - **图案库**：13 种经典图案，选择后显示半透明预览，点击棋盘直接放置
 - **规则切换**：康威生命、高地生活、昼与夜、种子、迷宫；支持 RLE 头部自定义 B/S
 - **边界模式**：死亡边界与环绕边界
-- **棋盘尺寸**：20 × 20 至 1000 × 1500（最大 150 万格）
+- **棋盘尺寸**：宽度 20–1500，高度 20–1000（最大 150 万格，x 轴为宽度）
 - **视图操作**：滚轮缩放（1 – 48 px/格）、中键/右键拖动平移、网格线开关
 - **文件**：打开 / 保存 RLE，导出 PNG 棋盘图片
 - **状态统计**：代数、存活细胞数、密度（Model 缓存人口，`stats()` O(1)）
@@ -266,9 +266,9 @@ ctest --test-dir build --output-on-failure
 |---|---|---|
 | `domain_tests` | 无 Qt | 规则、Grid、边界、图案库、RLE（含恶意输入、行/列诊断、缺少 `!`）、PackedGrid、快照历史 |
 | `model_tests` | QtCore | 演化、异步步进、停表、规则/边界、RLE 载入、跳转/取消、跳转中拒绝载入、错误码 |
-| `view_tests` | QtWidgets | 速度刻度、滑块不回写、被动 setter、1000×1500 渲染/导出、设置对话框、进度框关闭 |
+| `view_tests` | QtWidgets | 速度刻度、滑块不回写、被动 setter、1500×1000 渲染/导出、设置对话框、进度框关闭 |
 | `controller_tests` | QtWidgets | Bresenham、面板信号、绘制/图案、定时器、跳转方向/进度、Model→View 推送、文件路径、设置错误、会话恢复 |
-| `ui_tests` | QtWidgets | 完整 MainWindow、确认/取消、Space、网格、1000×1500 渲染/模拟、截图 |
+| `ui_tests` | QtWidgets | 完整 MainWindow、确认/取消、Space、网格、1500×1000 渲染/模拟、截图 |
 | `logging_tests` | QtCore | 文件 sink、category、verbose debug、轮转 |
 | `layering` | Python | include 方向、绕过、CJK、CMake 清单与目标链接 |
 | `layering_selftest` | Python | 架构门禁自身的负向 fixture |
@@ -290,7 +290,7 @@ UI 测试输出 `/tmp/lifegame-ui-tests.png`。CTest 为 UI 用例设置
 ## 设计细节
 
 - **定长 Grid**：`std::vector<Cell>` 只分配当前 `width × height` 的活动区域，每格 1 字节；
-  同尺寸 `resize()` 不清零，避免每代重复清零。大棋盘（1000 × 1500 = 150 万格）
+  同尺寸 `resize()` 不清零，避免每代重复清零。大棋盘（1500 × 1000 = 150 万格）
   约占 1.5 MB/棋盘，Grid 对象本身很小，不会压爆栈。
 - **人口缓存**：Model 维护 `m_population`，`stats()` O(1)；View 不再逐帧扫描棋盘。
 - **异步演化**：`SimulationEngine` 用 `QtConcurrent::mapped` 按行切片，
@@ -299,13 +299,13 @@ UI 测试输出 `/tmp/lifegame-ui-tests.png`。CTest 为 UI 用例设置
   `discardPending()`，旧结果不会覆盖新状态。
 - **快照回退**：生命游戏多对一、不可逆，因此按间隔存快照并正向重放；
   默认每 100 代一张，最多 64 张 + 锚点。快照使用 **1 bit/cell 的 `PackedGrid`**，
-  1000 × 1500 最大棋盘约 187.5 KB/张，65 张约 12 MB（活棋盘仍是 1 byte/cell，
+  1500 × 1000 最大棋盘约 187.5 KB/张，65 张约 12 MB（活棋盘仍是 1 byte/cell，
   保证模拟和渲染的热路径）。跳转在后台线程完成，
   UI 不逐代刷新，进度通过 queued invocation 回到 UI 线程。
 - **View 无拷贝**：Controller 把 `const domain::Grid*` 传给 `BoardView`；演化中把每格
   压成一个像素后整块缩放贴图，暂停后恢复逐格矢量绘制。
 - **导出上限**：PNG 使用固定 8 px/格，并把单边限制在 4096 px；不会因为缩放到
-  1000 × 1500、48 px/格而申请数十 GiB 的 QImage；导出始终限制在 4096 边长内。
+  1500 × 1000、48 px/格而申请数十 GiB 的 QImage；导出始终限制在 4096 边长内。
 - **滑块不回写**：`ControlPanel` 只在外部载入设置时 `setSpeed`；Controller 在拖动
   过程中只重启定时器，不会把滑块"吸回"到近似位置。
 - **大棋盘帧合并**：小棋盘立即刷新；运行中的大棋盘（>25 万格）最多约 60 fps
@@ -355,7 +355,7 @@ UI 测试输出 `/tmp/lifegame-ui-tests.png`。CTest 为 UI 用例设置
 
 ## 已知限制
 
-- 棋盘为有限尺寸，最大 1000 × 1500；位压缩快照最高约 12 MB。
+- 棋盘为有限尺寸：宽度最大 1500，高度最大 1000；位压缩快照最高约 12 MB。
 - 不提供撤销/重做；
 - 单步按钮在 UI 线程同步计算一代；连续模拟完全异步；
 - 并行计算使用 Qt 全局线程池，若应用其他部分占用大量池线程，模拟会自动排队；

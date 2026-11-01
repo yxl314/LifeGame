@@ -322,7 +322,7 @@ void ControlPanel::setupUi()
     m_widthSpin->setFixedWidth(72);
     m_widthSpin->setKeyboardTracking(false);
     m_widthSpin->setAccessibleName(tr("棋盘宽度"));
-    m_widthSpin->setToolTip(tr("列数（20 - 1000）"));
+    m_widthSpin->setToolTip(tr("列数（20 - 1500）"));
 
     m_heightSpin = new QSpinBox(sizeGroup);
     m_heightSpin->setObjectName(QStringLiteral("HeightSpin"));
@@ -332,7 +332,7 @@ void ControlPanel::setupUi()
     m_heightSpin->setFixedWidth(72);
     m_heightSpin->setKeyboardTracking(false);
     m_heightSpin->setAccessibleName(tr("棋盘高度"));
-    m_heightSpin->setToolTip(tr("行数（20 - 1500）"));
+    m_heightSpin->setToolTip(tr("行数（20 - 1000）"));
 
     auto* times = new QLabel(QStringLiteral("×"), sizeGroup);
     times->setObjectName(QStringLiteral("Muted"));

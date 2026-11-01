@@ -18,7 +18,7 @@ namespace lifegame::domain
  * Storage is sized to the active width() * height() area only, so a small
  * board does not pay for a 1.5M-cell buffer. The vector is reused by the step
  * pipeline when dimensions are unchanged, and the Grid object itself stays
- * small enough to live on the stack. This is important for 1000x1500 boards.
+ * small enough to live on the stack. This is important for 1500x1000 boards.
  */
 class Grid
 {

@@ -409,7 +409,7 @@ void ModelTests::commandResults()
     QCOMPARE(model.loadDocument(invalidRule), CommandResult::InvalidRule);
 
     lifegame::domain::DecodedDocument tooLarge;
-    tooLarge.pattern = lifegame::domain::Pattern::fromAscii("wide", {std::string(1001, 'O')});
+    tooLarge.pattern = lifegame::domain::Pattern::fromAscii("wide", {std::string(1501, 'O')});
     QCOMPARE(model.loadDocument(tooLarge), CommandResult::TooLarge);
 
     QCOMPARE(model.clear(), CommandResult::Success);
@@ -433,9 +433,9 @@ void ModelTests::commandResults()
 void ModelTests::largeBoard()
 {
     lifegame::model::LifeModel model;
-    QCOMPARE(model.resizeBoard(1000, 1500), lifegame::model::CommandResult::Success);
-    QCOMPARE(model.width(), 1000);
-    QCOMPARE(model.height(), 1500);
+    QCOMPARE(model.resizeBoard(1500, 1000), lifegame::model::CommandResult::Success);
+    QCOMPARE(model.width(), 1500);
+    QCOMPARE(model.height(), 1000);
 
     QCOMPARE(model.randomize(30), lifegame::model::CommandResult::Success);
     QVERIFY(model.stats().population > 0);
@@ -447,8 +447,8 @@ void ModelTests::largeBoard()
     QVERIFY(decoded.document.has_value());
     if (decoded.document)
     {
-        QCOMPARE(decoded.document->pattern.width, 1000);
-        QCOMPARE(decoded.document->pattern.height, 1500);
+        QCOMPARE(decoded.document->pattern.width, 1500);
+        QCOMPARE(decoded.document->pattern.height, 1000);
     }
 }
 

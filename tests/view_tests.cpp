@@ -191,10 +191,10 @@ void ViewTests::progressDialogProgrammaticCloseDoesNotCancel()
 
 void ViewTests::largeBoardRendersAndExports()
 {
-    lifegame::domain::Grid grid(1000, 1500);
+    lifegame::domain::Grid grid(1500, 1000);
     grid.setCell(0, 0, true);
-    grid.setCell(999, 1499, true);
-    grid.setCell(500, 750, true);
+    grid.setCell(1499, 999, true);
+    grid.setCell(750, 500, true);
 
     lifegame::view::BoardView view;
     view.resize(1180, 820);

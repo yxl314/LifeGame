@@ -1,7 +1,7 @@
 # 大棋盘渲染 profile
 
 环境：aarch64 8 核、Qt 5.15.13、Release/Debug 混合验证、`QT_QPA_PLATFORM=offscreen`。
-棋盘 1000×1500，`BoardView` 1000×700。
+棋盘 1500×1000，`BoardView` 1000×700。
 
 ## 结果（无其他编译负载时）
 

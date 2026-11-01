@@ -358,7 +358,7 @@ void BoardController::resizeBoard(int width, int height)
                            .arg(wasEmpty ? QString() : tr("（原棋盘已清空）"));
         if (result == model::CommandResult::Adjusted)
         {
-            text += tr("（尺寸已限制到 20–1000 × 20–1500）");
+            text += tr("（尺寸已限制到 20–1500 × 20–1000）");
         }
         m_messages->showMessage(text, 4000);
     }

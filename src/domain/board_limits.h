@@ -7,8 +7,8 @@ namespace lifegame::domain
 // that there is exactly one source of truth.
 
 inline constexpr int kMinBoardExtent = 20;
-inline constexpr int kMaxBoardWidth = 1000;
-inline constexpr int kMaxBoardHeight = 1500;
+inline constexpr int kMaxBoardWidth = 1500;
+inline constexpr int kMaxBoardHeight = 1000;
 
 inline constexpr int kDefaultBoardWidth = 250;
 inline constexpr int kDefaultBoardHeight = 200;
