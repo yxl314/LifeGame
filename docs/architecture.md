@@ -78,6 +78,8 @@ lifegame             → lifegame_app
 ### Model
 
 - `LifeModel` 是可观察的应用状态机：棋盘、规则、边界、代数、人口、快照历史、运行/跳转状态。
+- 活棋盘保持 1 byte/cell；`History` 快照使用 1 bit/cell 的 `PackedGrid`，
+  只在记录和回退时 pack/unpack。
 - 对外只有两类接口：
   - **只读查询**：`board()`、`stats()`、`rule()`、`boundary()`、`isRunning()` 等；
   - **命令**：`setCell()`、`step()`、`loadDocument()`、`setRule()`、`startJump()` 等。
@@ -188,7 +190,7 @@ FileController::openRle()
   `drawRect`；低缩放时绘制粗网格（约每 3 屏幕像素一条），网格开关仍然可见。
 - PNG 导出仍限制单边 4096 px；1000 × 1500 导出为约 2032 × 3032，
   不会按 48 px/格申请数十 GiB。
-- 快照是活动区域副本；默认 64 张在 1000 × 1500 下最高约 96 MB。
+- 快照是 1 bit/cell 的 `PackedGrid`；默认 64 张在 1000 × 1500 下约 12 MB。
 
 ## 6. 错误、日志与并发
 
@@ -225,7 +227,7 @@ FileController::openRle()
 
 | 用例 | 覆盖 |
 |---|---|
-| `domain_tests` | 规则、Grid、边界、图案、RLE 恶意输入/行诊断、History |
+| `domain_tests` | 规则、Grid、边界、图案、RLE 恶意输入/行诊断、PackedGrid、History |
 | `model_tests` | 演化、异步步进、停表、规则/边界、RLE 载入、跳转/取消、错误码 |
 | `view_tests` | 被动 setter、速度滑块、导出上限、目录、设置对话框、进度框关闭 |
 | `controller_tests` | Model→View 推送、面板信号、绘制/图案、定时器、跳转、文件/设置、会话 |

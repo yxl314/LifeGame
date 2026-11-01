@@ -11,24 +11,35 @@ namespace lifegame::view
 namespace
 {
 
-constexpr double kMinSpeed = static_cast<double>(shared::limits::kSpeedMin);
-constexpr double kMaxSpeed = static_cast<double>(shared::limits::kSpeedMax);
-
 } // namespace
 
 int speedForSliderPosition(int position)
 {
+    if (position <= 0)
+    {
+        return 0;
+    }
+
+    const int clamped = std::clamp(position, 1, kSpeedSliderSteps);
     const double ratio =
-        static_cast<double>(std::clamp(position, 0, kSpeedSliderSteps)) / static_cast<double>(kSpeedSliderSteps);
-    const double value = kMinSpeed * std::pow(kMaxSpeed / kMinSpeed, ratio);
-    return std::clamp(static_cast<int>(std::lround(value)), shared::limits::kSpeedMin, shared::limits::kSpeedMax);
+        static_cast<double>(clamped - 1) / static_cast<double>(kSpeedSliderSteps - 1);
+    const double value = std::exp(ratio * std::log(static_cast<double>(shared::limits::kSpeedMax)));
+    return std::clamp(static_cast<int>(std::lround(value)), 1, shared::limits::kSpeedMax);
 }
 
 int sliderPositionForSpeed(int speed)
 {
     const int clamped = std::clamp(speed, shared::limits::kSpeedMin, shared::limits::kSpeedMax);
-    const double ratio = std::log(static_cast<double>(clamped) / kMinSpeed) / std::log(kMaxSpeed / kMinSpeed);
-    return std::clamp(static_cast<int>(std::lround(ratio * kSpeedSliderSteps)), 0, kSpeedSliderSteps);
+    if (clamped <= 0)
+    {
+        return 0;
+    }
+
+    const double ratio = std::log(static_cast<double>(clamped)) /
+                         std::log(static_cast<double>(shared::limits::kSpeedMax));
+    return std::clamp(static_cast<int>(std::lround(1.0 + ratio * (kSpeedSliderSteps - 1))),
+                      1,
+                      kSpeedSliderSteps);
 }
 
 } // namespace lifegame::view

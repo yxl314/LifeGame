@@ -177,6 +177,7 @@ void ControlPanel::setupUi()
     connect(m_speedSlider, &QSlider::valueChanged, this, [this](int position) {
         const int speed = speedForSliderPosition(position);
         m_speedValue->setText(tr("%1 代/秒").arg(speed));
+        m_speedValue->setToolTip(speed == 0 ? tr("速度为 0：模拟暂停") : tr("每秒演化代数"));
         if (speed != m_speed)
         {
             m_speed = speed;
@@ -560,6 +561,7 @@ void ControlPanel::updateJumpState()
 void ControlPanel::updateSpeedLabel()
 {
     m_speedValue->setText(tr("%1 代/秒").arg(m_speed));
+    m_speedValue->setToolTip(m_speed == 0 ? tr("速度为 0：模拟暂停") : tr("每秒演化代数"));
 }
 
 } // namespace lifegame::view

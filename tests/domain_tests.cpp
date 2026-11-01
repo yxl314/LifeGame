@@ -81,7 +81,7 @@ static_assert(kClampedSettings.jumpStep == 1000);
 static_assert(kClampedSettings.sizeStep == 50);
 static_assert(kClampedSettings.snapshotInterval == 10);
 static_assert(kClampedSettings.density == 5);
-static_assert(kClampedSettings.speed == 200);
+static_assert(kClampedSettings.speed == 120);
 
 void testRules()
 {
@@ -493,6 +493,31 @@ void testRleRoundTrip()
     }
 }
 
+void testPackedGrid()
+{
+    using lifegame::domain::Grid;
+    using lifegame::domain::PackedGrid;
+
+    Grid board(100, 80);
+    board.setCell(0, 0, true);
+    board.setCell(50, 40, true);
+    board.setCell(79, 99, true);
+
+    const PackedGrid packed(board);
+    CHECK(packed.width() == 100);
+    CHECK(packed.height() == 80);
+    CHECK(packed.byteSize() <= (100u * 80u + 7u) / 8u + 8u);
+    CHECK(!packed.empty());
+
+    const Grid restored = packed.unpack();
+    CHECK(restored.width() == 100);
+    CHECK(restored.height() == 80);
+    CHECK(restored.equals(board));
+    CHECK(restored.cell(0, 0));
+    CHECK(restored.cell(50, 40));
+    CHECK(restored.cell(79, 99));
+}
+
 void testHistory()
 {
     using lifegame::domain::Grid;
@@ -516,6 +541,12 @@ void testHistory()
     if (atOrBefore)
     {
         CHECK(atOrBefore->generation == 100);
+        CHECK(atOrBefore->board != nullptr);
+        if (atOrBefore->board)
+        {
+            CHECK(atOrBefore->board->byteSize() <= (10u * 10u + 7u) / 8u + 8u);
+            CHECK(atOrBefore->board->unpack().equals(*board));
+        }
     }
     CHECK(history.snapshotAtOrBefore(-1) == nullptr);
 
@@ -554,6 +585,7 @@ int main()
     testRleDecode();
     testRleRoundTrip();
     testHistory();
+    testPackedGrid();
 
     if (g_failures == 0)
     {

@@ -7,6 +7,7 @@
 
 class QAction;
 class QPoint;
+class QTimer;
 
 namespace lifegame::model
 {
@@ -59,6 +60,8 @@ private slots:
 private:
     void paintLine(int fromRow, int fromCol, int toRow, int toCol, bool alive);
     void syncViews();
+    void requestViewUpdate();
+    void updateViews();
     void applyStamp(int row, int col);
 
     model::LifeModel* m_model = nullptr;
@@ -78,6 +81,7 @@ private:
 
     bool m_gridVisible = true;
     QAction* m_gridAction = nullptr;
+    QTimer* m_viewTimer = nullptr;
 };
 
 } // namespace lifegame::controller

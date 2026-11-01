@@ -231,6 +231,19 @@ void ControllerTests::simulationControllerDrivesModel()
     controller.setSpeedExternal(42);
     QCOMPARE(controller.speed(), 42);
     QCOMPARE(panel.speed(), 42);
+
+    QVERIFY(model.setCell(7, 7, true));
+    controller.setSpeedExternal(0);
+    QCOMPARE(panel.speed(), 0);
+    controller.toggleRunning();
+    QCOMPARE(model.isRunning(), false);
+    QVERIFY(messages.last.contains(QStringLiteral("速度为 0")));
+
+    controller.setSpeedExternal(10);
+    controller.toggleRunning();
+    QCOMPARE(model.isRunning(), true);
+    controller.setSpeedExternal(0);
+    QCOMPARE(model.isRunning(), false);
 }
 
 void ControllerTests::jumpControllerReportsProgressAndCancel()

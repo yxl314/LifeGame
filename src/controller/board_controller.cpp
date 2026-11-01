@@ -3,6 +3,7 @@
 #include <QAction>
 #include <QPoint>
 #include <QSignalBlocker>
+#include <QTimer>
 
 #include "controller/error_text.h"
 #include "controller/line_raster.h"
@@ -15,6 +16,15 @@
 
 namespace lifegame::controller
 {
+
+namespace
+{
+
+// Large boards are rendered at most ~60 fps; simulation can still advance faster.
+constexpr int kLargeBoardCells = 250000;
+constexpr int kViewFrameMs = 16;
+
+} // namespace
 
 BoardController::BoardController(model::LifeModel* model,
                                  view::BoardView* view,
@@ -50,27 +60,33 @@ BoardController::BoardController(model::LifeModel* model,
     m_panel->setPatternOptions(options);
     selectPattern(-1);
 
-    connect(m_model, &model::LifeModel::boardChanged, this, [this] {
-        m_view->setBoard(&m_model->board());
-        m_view->setPopulation(m_model->stats().population);
-        m_view->refresh();
-    });
+    m_viewTimer = new QTimer(this);
+    m_viewTimer->setSingleShot(true);
+    m_viewTimer->setInterval(kViewFrameMs);
+    connect(m_viewTimer, &QTimer::timeout, this, &BoardController::updateViews);
+
+    connect(m_model, &model::LifeModel::boardChanged, this, &BoardController::requestViewUpdate);
+    connect(m_model, &model::LifeModel::statusChanged, this, &BoardController::requestViewUpdate);
     connect(m_model, &model::LifeModel::boardResized, this, [this](int width, int height) {
+        if (m_viewTimer != nullptr)
+        {
+            m_viewTimer->stop();
+        }
         m_view->setBoard(&m_model->board());
         m_panel->setBoardSize(width, height);
     });
     connect(m_model, &model::LifeModel::runningChanged, this, [this](bool running) {
+        if (!running && m_viewTimer != nullptr)
+        {
+            m_viewTimer->stop();
+        }
         m_view->setRunning(running);
         m_panel->setRunning(running);
+        if (!running)
+        {
+            updateViews();
+        }
     });
-    connect(m_model,
-            &model::LifeModel::statusChanged,
-            this,
-            [this](const shared::LifeStats& stats) {
-                m_view->setPopulation(stats.population);
-                m_panel->setStats(stats);
-                m_panel->setOldestGeneration(m_model->oldestGeneration());
-            });
 
     m_gridVisible = m_view->gridVisible();
     syncViews();
@@ -78,13 +94,39 @@ BoardController::BoardController(model::LifeModel* model,
 
 void BoardController::syncViews()
 {
+    if (m_viewTimer != nullptr)
+    {
+        m_viewTimer->stop();
+    }
     m_view->setBoard(&m_model->board());
-    m_view->setPopulation(m_model->stats().population);
     m_view->setRunning(m_model->isRunning());
-    m_panel->setStats(m_model->stats());
-    m_panel->setOldestGeneration(m_model->oldestGeneration());
     m_panel->setRunning(m_model->isRunning());
     m_panel->setBoardSize(m_model->width(), m_model->height());
+    updateViews();
+}
+
+void BoardController::requestViewUpdate()
+{
+    const int cells = m_model->width() * m_model->height();
+    if (!m_model->isRunning() || cells <= kLargeBoardCells)
+    {
+        updateViews();
+        return;
+    }
+
+    if (m_viewTimer != nullptr && !m_viewTimer->isActive())
+    {
+        m_viewTimer->start();
+    }
+}
+
+void BoardController::updateViews()
+{
+    m_view->setBoard(&m_model->board());
+    m_view->setPopulation(m_model->stats().population);
+    m_view->refresh();
+    m_panel->setStats(m_model->stats());
+    m_panel->setOldestGeneration(m_model->oldestGeneration());
 }
 
 void BoardController::setGridAction(QAction* action)

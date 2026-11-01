@@ -50,6 +50,7 @@ private slots:
     void onStalled(lifegame::model::StallReason reason);
 
 private:
+    void applySpeed(int speed);
     void restartTimer();
     void updatePlayAction();
 

@@ -16,7 +16,7 @@ void History::reset(int generation, std::shared_ptr<const Grid> board)
     m_snapshots.clear();
     if (board)
     {
-        m_snapshots.push_back({generation, std::move(board)});
+        m_snapshots.push_back({generation, std::make_shared<const PackedGrid>(*board)});
     }
 }
 
@@ -26,9 +26,19 @@ void History::record(int generation, std::shared_ptr<const Grid> board)
     {
         return;
     }
+    recordPacked(generation, std::make_shared<const PackedGrid>(*board));
+}
+
+void History::recordPacked(int generation, std::shared_ptr<const PackedGrid> board)
+{
+    if (!board)
+    {
+        return;
+    }
     if (m_snapshots.empty())
     {
-        reset(generation, std::move(board));
+        m_epoch = generation;
+        m_snapshots.push_back({generation, std::move(board)});
         return;
     }
     if (generation <= m_snapshots.back().generation || !aligned(generation))

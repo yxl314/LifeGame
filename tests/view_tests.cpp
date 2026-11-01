@@ -52,10 +52,12 @@ private slots:
 
 void ViewTests::speedScale()
 {
-    QCOMPARE(lifegame::view::speedForSliderPosition(0), 1);
-    QCOMPARE(lifegame::view::speedForSliderPosition(100), 200);
-    QCOMPARE(lifegame::view::sliderPositionForSpeed(1), 0);
-    QCOMPARE(lifegame::view::sliderPositionForSpeed(200), 100);
+    QCOMPARE(lifegame::view::speedForSliderPosition(0), 0);
+    QCOMPARE(lifegame::view::speedForSliderPosition(1), 1);
+    QCOMPARE(lifegame::view::speedForSliderPosition(100), 120);
+    QCOMPARE(lifegame::view::sliderPositionForSpeed(0), 0);
+    QCOMPARE(lifegame::view::sliderPositionForSpeed(1), 1);
+    QCOMPARE(lifegame::view::sliderPositionForSpeed(120), 100);
 }
 
 void ViewTests::speedSliderDoesNotWriteBack()
@@ -68,13 +70,17 @@ void ViewTests::speedSliderDoesNotWriteBack()
     QCOMPARE(slider->value(), lifegame::view::sliderPositionForSpeed(10));
 
     QSignalSpy speedSpy(&panel, &lifegame::view::ControlPanel::speedChanged);
-    slider->setValue(8);
+    slider->setValue(9);
     QCOMPARE(speedSpy.count(), 1);
-    QCOMPARE(speedSpy.first().first().toInt(), 2);
+    QCOMPARE(speedSpy.first().first().toInt(), lifegame::view::speedForSliderPosition(9));
 
     // The panel must not snap the thumb back while the user is dragging.
-    QCOMPARE(slider->value(), 8);
-    QCOMPARE(panel.speed(), 2);
+    QCOMPARE(slider->value(), 9);
+    QCOMPARE(panel.speed(), lifegame::view::speedForSliderPosition(9));
+
+    panel.setSpeed(0);
+    QCOMPARE(panel.speed(), 0);
+    QCOMPARE(slider->value(), 0);
 }
 
 void ViewTests::controlPanelDisplaysPushedState()

@@ -14,8 +14,8 @@ inline constexpr int kSizeStepMin = 5;
 inline constexpr int kSizeStepMax = 50;
 inline constexpr int kSnapshotIntervalMin = 10;
 inline constexpr int kSnapshotIntervalMax = 1000;
-inline constexpr int kSpeedMin = 1;
-inline constexpr int kSpeedMax = 200;
+inline constexpr int kSpeedMin = 0;
+inline constexpr int kSpeedMax = 120;
 inline constexpr int kDensityMin = 5;
 inline constexpr int kDensityMax = 90;
 } // namespace limits

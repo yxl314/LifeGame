@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "domain/grid.h"
+#include "domain/packed_grid.h"
 
 namespace lifegame::domain
 {
@@ -24,7 +25,7 @@ public:
     struct Snapshot
     {
         int generation = 0;
-        std::shared_ptr<const Grid> board;
+        std::shared_ptr<const PackedGrid> board;
     };
 
     static constexpr int kMaxSnapshots = 64;
@@ -40,6 +41,9 @@ public:
      * ignored.
      */
     void record(int generation, std::shared_ptr<const Grid> board);
+
+    /// Record an already packed snapshot (used by the jump worker).
+    void recordPacked(int generation, std::shared_ptr<const PackedGrid> board);
 
     /// True when `record(generation, ...)` would actually store something.
     bool shouldRecord(int generation) const;

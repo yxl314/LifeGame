@@ -30,7 +30,7 @@
 - **可执行的架构门禁**：`tools/check_layering.py` 在 CTest 与 CI 中检查层间 include；
   CMake 目标本身也按层拆分。
 - **并发与状态机可测试**：单代异步演化封装在 `SimulationEngine`；跳转重放在
-  `LifeModel` 的后台任务中完成；快照历史是纯 C++；Model/View/Controller 各有 QtTest 覆盖。
+  `LifeModel` 的后台任务中完成；快照历史使用 1 bit/cell 压缩；Model/View/Controller 各有 QtTest 覆盖。
 - **错误码而非异常**：应用代码以 `-fno-exceptions` 编译；可恢复失败使用
   `model::CommandResult`、`service::FileError`、`service::SettingsError`、
   `domain::RleError` 等类型化错误码，Controller 负责映射成一条可操作的中文提示。
@@ -45,7 +45,7 @@
 - **模拟控制**：开始 / 暂停、单步、随机填充、清空
 - **代数跳转**：按指定代数回退或快进；跳转不逐代刷新界面，回退基于快照重放
 - **可配置粒度**：跳转粒度、棋盘尺寸粒度、快照间隔，保存在 QSettings
-- **速度调节**：1 – 200 代/秒（对数刻度滑块；拖动时不会被回写"吸回"）
+- **速度调节**：0 – 120 代/秒（0 为暂停，正数对数刻度；大棋盘 View 更新合并到约 60 fps）
 - **并行演化**：QtConcurrent + QThreadPool 按行分块；计算不占用 UI 线程
 - **图案库**：13 种经典图案，选择后显示半透明预览，点击棋盘直接放置
 - **规则切换**：康威生命、高地生活、昼与夜、种子、迷宫；支持 RLE 头部自定义 B/S
@@ -109,6 +109,7 @@
 ## 架构
 
 完整契约见 **[docs/architecture.md](docs/architecture.md)**；
+大棋盘渲染 profile 见 **[docs/rendering-profile.md](docs/rendering-profile.md)**；
 独立审计（不引用文档作为证据）见 **[docs/architecture-audit.md](docs/architecture-audit.md)**。
 
 ### 分层
@@ -175,7 +176,7 @@ CMakeLists.txt                分层 CMake 目标
 CMakePresets.json             debug / release / asan 预设
 docs/architecture.md          架构契约与评审清单
 docs/performance.md           数据结构与并发性能报告
-src/domain/                   纯业务 C++，无 Qt
+src/domain/                   纯业务 C++，无 Qt（含 1 bit/cell 快照 PackedGrid）
 src/shared/                   跨层只读契约值对象（无 Qt、无行为）
 src/model/                    可观察 Model + CommandResult + 异步管线
 src/service/                  QSettings / RLE / PNG + FileError/SettingsError
@@ -263,7 +264,7 @@ ctest --test-dir build --output-on-failure
 
 | 用例 | 依赖 | 覆盖 |
 |---|---|---|
-| `domain_tests` | 无 Qt | 规则、Grid、边界、图案库、RLE（含恶意输入、行/列诊断、缺少 `!`）、快照历史 |
+| `domain_tests` | 无 Qt | 规则、Grid、边界、图案库、RLE（含恶意输入、行/列诊断、缺少 `!`）、PackedGrid、快照历史 |
 | `model_tests` | QtCore | 演化、异步步进、停表、规则/边界、RLE 载入、跳转/取消、跳转中拒绝载入、错误码 |
 | `view_tests` | QtWidgets | 速度刻度、滑块不回写、被动 setter、1000×1500 渲染/导出、设置对话框、进度框关闭 |
 | `controller_tests` | QtWidgets | Bresenham、面板信号、绘制/图案、定时器、跳转方向/进度、Model→View 推送、文件路径、设置错误、会话恢复 |
@@ -297,8 +298,9 @@ UI 测试输出 `/tmp/lifegame-ui-tests.png`。CTest 为 UI 用例设置
 - **背压与失效**：上一代仍在计算时忽略新的定时器请求；编辑/暂停/规则变化调用
   `discardPending()`，旧结果不会覆盖新状态。
 - **快照回退**：生命游戏多对一、不可逆，因此按间隔存快照并正向重放；
-  默认每 100 代一张，最多 64 张 + 锚点；小棋盘约 3–10 MB，
-  1000 × 1500 最大棋盘约 96 MB。跳转在后台线程完成，
+  默认每 100 代一张，最多 64 张 + 锚点。快照使用 **1 bit/cell 的 `PackedGrid`**，
+  1000 × 1500 最大棋盘约 187.5 KB/张，65 张约 12 MB（活棋盘仍是 1 byte/cell，
+  保证模拟和渲染的热路径）。跳转在后台线程完成，
   UI 不逐代刷新，进度通过 queued invocation 回到 UI 线程。
 - **View 无拷贝**：Controller 把 `const domain::Grid*` 传给 `BoardView`；演化中把每格
   压成一个像素后整块缩放贴图，暂停后恢复逐格矢量绘制。
@@ -306,6 +308,8 @@ UI 测试输出 `/tmp/lifegame-ui-tests.png`。CTest 为 UI 用例设置
   1000 × 1500、48 px/格而申请数十 GiB 的 QImage；导出始终限制在 4096 边长内。
 - **滑块不回写**：`ControlPanel` 只在外部载入设置时 `setSpeed`；Controller 在拖动
   过程中只重启定时器，不会把滑块"吸回"到近似位置。
+- **大棋盘帧合并**：小棋盘立即刷新；运行中的大棋盘（>25 万格）最多约 60 fps
+  更新 View，模拟本身仍按 0–120 代/秒推进。
 - **随机填充**：Model 用高精度时钟与对象地址混合出种子（避免 `std::random_device`
   可能抛异常），因此每次结果不同；`Grid::randomize(density, seed)` 仍保留显式种子，
   便于测试与复现。
@@ -351,7 +355,7 @@ UI 测试输出 `/tmp/lifegame-ui-tests.png`。CTest 为 UI 用例设置
 
 ## 已知限制
 
-- 棋盘为有限尺寸，最大 1000 × 1500；大棋盘快照内存最高约 96 MB。
+- 棋盘为有限尺寸，最大 1000 × 1500；位压缩快照最高约 12 MB。
 - 不提供撤销/重做；
 - 单步按钮在 UI 线程同步计算一代；连续模拟完全异步；
 - 并行计算使用 Qt 全局线程池，若应用其他部分占用大量池线程，模拟会自动排队；

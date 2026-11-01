@@ -13,6 +13,7 @@
 
 #include "domain/grid.h"
 #include "domain/history.h"
+#include "domain/packed_grid.h"
 #include "domain/pattern.h"
 #include "domain/rle.h"
 #include "domain/rule.h"
@@ -121,10 +122,16 @@ private slots:
     void reportJumpProgress(int done);
 
 private:
+    struct JumpSnapshot
+    {
+        int generation = 0;
+        std::shared_ptr<const domain::PackedGrid> board;
+    };
+
     struct JumpOutcome
     {
         std::shared_ptr<const domain::Grid> board;
-        std::vector<domain::History::Snapshot> snapshots;
+        std::vector<JumpSnapshot> snapshots;
         int generation = 0;
         bool cancelled = false;
         CommandResult error = CommandResult::Success;

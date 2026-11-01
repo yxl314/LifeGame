@@ -667,7 +667,8 @@ CommandResult LifeModel::startJump(int targetGeneration)
             return CommandResult::NoHistory;
         }
         startGeneration = snapshot->generation;
-        startBoard = snapshot->board;
+        domain::Grid restored = snapshot->board->unpack();
+        startBoard = std::make_shared<const domain::Grid>(std::move(restored));
     }
 
     const int total = targetGeneration - startGeneration;
@@ -726,7 +727,7 @@ CommandResult LifeModel::startJump(int targetGeneration)
 
                 if (forward && (generation - epoch) % interval == 0)
                 {
-                    std::shared_ptr<const domain::Grid> snapshot = makeSnapshot(*current);
+                    auto snapshot = std::make_shared<const domain::PackedGrid>(*current);
                     if (snapshot)
                     {
                         outcome.snapshots.push_back({generation, std::move(snapshot)});
@@ -814,9 +815,9 @@ void LifeModel::onJumpFinished()
     }
     else
     {
-        for (const domain::History::Snapshot& snapshot : outcome.snapshots)
+        for (const JumpSnapshot& snapshot : outcome.snapshots)
         {
-            m_history.record(snapshot.generation, snapshot.board);
+            m_history.recordPacked(snapshot.generation, snapshot.board);
         }
     }
 

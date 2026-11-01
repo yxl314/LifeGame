@@ -79,13 +79,39 @@ void SimulationController::setPlayPauseAction(QAction* action)
 
 void SimulationController::setSpeedExternal(int speed)
 {
+    applySpeed(speed);
+}
+
+void SimulationController::applySpeed(int speed)
+{
     m_speed = std::clamp(speed, shared::limits::kSpeedMin, shared::limits::kSpeedMax);
     m_panel->setSpeed(m_speed);
-    restartTimer();
+    if (m_speed <= 0)
+    {
+        m_timer->stop();
+        if (m_model->isRunning())
+        {
+            (void)m_model->setRunning(false);
+        }
+        return;
+    }
+    if (m_model->isRunning())
+    {
+        restartTimer();
+    }
 }
 
 void SimulationController::toggleRunning()
 {
+    if (!m_model->isRunning() && m_speed <= 0)
+    {
+        if (m_messages != nullptr)
+        {
+            m_messages->showMessage(tr("速度为 0，请先调高速度再开始模拟。"), 4000);
+        }
+        return;
+    }
+
     const bool before = m_model->isRunning();
     const model::CommandResult result = m_model->toggleRunning();
     if (result == model::CommandResult::EmptyBoard)
@@ -147,7 +173,7 @@ void SimulationController::onTick()
 
 void SimulationController::onRunningChanged(bool running)
 {
-    if (running)
+    if (running && m_speed > 0)
     {
         restartTimer();
     }
@@ -160,14 +186,17 @@ void SimulationController::onRunningChanged(bool running)
 
 void SimulationController::onSpeedChanged(int speed)
 {
-    m_speed = std::clamp(speed, shared::limits::kSpeedMin, shared::limits::kSpeedMax);
-    if (m_timer->isActive())
-    {
-        restartTimer();
-    }
+    applySpeed(speed);
     if (m_messages != nullptr)
     {
-        m_messages->showMessage(tr("模拟速度：%1 代/秒").arg(m_speed), 2500);
+        if (m_speed == 0)
+        {
+            m_messages->showMessage(tr("速度为 0，模拟已暂停。"), 3000);
+        }
+        else
+        {
+            m_messages->showMessage(tr("模拟速度：%1 代/秒").arg(m_speed), 2500);
+        }
     }
 }
 
@@ -181,6 +210,11 @@ void SimulationController::onStalled(model::StallReason reason)
 
 void SimulationController::restartTimer()
 {
+    if (m_speed <= 0)
+    {
+        m_timer->stop();
+        return;
+    }
     if (m_model->isRunning())
     {
         m_timer->start(timerInterval(m_speed));

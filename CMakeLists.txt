@@ -65,6 +65,8 @@ add_library(lifegame_domain STATIC
     src/domain/history.cpp
     src/domain/board_limits.h
     src/domain/boundary.h
+    src/domain/packed_grid.h
+    src/domain/packed_grid.cpp
     src/domain/cell.h
 )
 target_include_directories(lifegame_domain PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
