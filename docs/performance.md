@@ -132,3 +132,24 @@
   第 5 节是包含绘制在内的端到端结果。
 - 设备为变频 CPU，绝对数值会有波动；趋势与量级稳定。
 - 旧实现源码已从当前仓库移除；如需复现基线，请使用重构前的提交或独立基准程序。
+
+
+## C++17 / 移动语义 / constexpr 的实际使用
+
+| 用法 | 位置 | 目的 |
+|---|---|---|
+| `std::string_view` | `Rle`、`Rule`、`PatternLibrary` | 解析/查找不复制字符串 |
+| `std::optional` | `RleDecodeResult` | 值语义的成功/失败结果 |
+| `std::clamp` + `inline constexpr` | `board_limits.h`、`shared/app_settings.h` | 范围单一来源，编译期常量 |
+| `constexpr Rule` | `Rule` 构造/`births`/`survives` | 规则位掩码可在编译期求值、易内联 |
+| `constexpr Grid::width/height` | `Grid` | 小尺寸查询无函数调用开销 |
+| `constexpr shared::normalized` | 设置规范化 | 范围钳制无运行时初始化 |
+| `static_assert` | `domain_tests` | 验证 `Rule` 常量表达式与 `Grid`/`Rule` nothrow move |
+| move | `Grid`/`SimulationEngine`/`LifeModel` | 1.5 MB 棋盘的 buffer 转移，避免深拷贝 |
+| `std::from_chars` | RLE 头部 | 无分配整数解析 |
+| `std::to_chars` | RLE 游程编码 | 每个 run 不再 `std::to_string` 分配 |
+
+说明：C++17 的语言特性不会自动让 150 万格的演化变快。真正的性能来源仍是：
+连续 `Cell` 存储、按行并行、避免每代分配、`QImage` 批量缩放、粗网格缓存，以及
+限制详细绘制的 cell 数。`if constexpr` 在当前代码中没有合适的类型分支，因此没有为了
+“用上 C++17”而加入。

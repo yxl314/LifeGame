@@ -62,22 +62,6 @@ std::string_view stripPrefix(std::string_view text, char upper, char lower)
 
 } // namespace
 
-Rule::Rule(std::uint16_t birth, std::uint16_t survival)
-    : m_birth(static_cast<std::uint16_t>(birth & 0x01FFu)),
-      m_survival(static_cast<std::uint16_t>(survival & 0x01FFu))
-{
-}
-
-bool Rule::births(int neighbours) const
-{
-    return neighbours >= 0 && neighbours <= 8 && (m_birth & (1u << neighbours)) != 0;
-}
-
-bool Rule::survives(int neighbours) const
-{
-    return neighbours >= 0 && neighbours <= 8 && (m_survival & (1u << neighbours)) != 0;
-}
-
 std::string Rule::notation() const
 {
     return "B" + maskToText(m_birth) + "/S" + maskToText(m_survival);

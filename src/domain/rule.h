@@ -44,19 +44,30 @@ class Rule
 {
 public:
     /// Conway's rule, B3/S23.
-    Rule() = default;
+    constexpr Rule() = default;
 
-    Rule(std::uint16_t birth, std::uint16_t survival);
+    constexpr Rule(std::uint16_t birth, std::uint16_t survival) noexcept
+        : m_birth(static_cast<std::uint16_t>(birth & 0x01FFu)),
+          m_survival(static_cast<std::uint16_t>(survival & 0x01FFu))
+    {
+    }
 
-    bool births(int neighbours) const;
-    bool survives(int neighbours) const;
+    constexpr bool births(int neighbours) const noexcept
+    {
+        return neighbours >= 0 && neighbours <= 8 && (m_birth & (1u << neighbours)) != 0;
+    }
 
-    std::uint16_t birthMask() const
+    constexpr bool survives(int neighbours) const noexcept
+    {
+        return neighbours >= 0 && neighbours <= 8 && (m_survival & (1u << neighbours)) != 0;
+    }
+
+    constexpr std::uint16_t birthMask() const noexcept
     {
         return m_birth;
     }
 
-    std::uint16_t survivalMask() const
+    constexpr std::uint16_t survivalMask() const noexcept
     {
         return m_survival;
     }
@@ -73,12 +84,12 @@ public:
      */
     static RuleParseResult parse(std::string_view text);
 
-    friend bool operator==(const Rule& lhs, const Rule& rhs)
+    friend constexpr bool operator==(const Rule& lhs, const Rule& rhs) noexcept
     {
         return lhs.m_birth == rhs.m_birth && lhs.m_survival == rhs.m_survival;
     }
 
-    friend bool operator!=(const Rule& lhs, const Rule& rhs)
+    friend constexpr bool operator!=(const Rule& lhs, const Rule& rhs) noexcept
     {
         return !(lhs == rhs);
     }

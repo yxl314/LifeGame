@@ -3,6 +3,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -11,6 +12,7 @@
 #include "domain/pattern_library.h"
 #include "domain/rle.h"
 #include "domain/rule.h"
+#include "shared/app_settings.h"
 
 namespace
 {
@@ -63,6 +65,23 @@ void placePattern(lifegame::domain::Grid* board,
         }
     }
 }
+
+static_assert(lifegame::domain::Rule().births(3));
+static_assert(!lifegame::domain::Rule().births(2));
+static_assert(lifegame::domain::Rule().survives(3));
+static_assert(lifegame::domain::Rule(1u << 6, 1u << 2).births(6));
+static_assert(!lifegame::domain::Rule(1u << 6, 1u << 2).survives(6));
+static_assert(std::is_nothrow_move_constructible_v<lifegame::domain::Grid>);
+static_assert(std::is_nothrow_move_assignable_v<lifegame::domain::Grid>);
+static_assert(std::is_nothrow_move_constructible_v<lifegame::domain::Rule>);
+
+constexpr lifegame::shared::AppSettings kClampedSettings =
+    lifegame::shared::normalized(lifegame::shared::AppSettings{2000, 100, 5, 1, 500, true});
+static_assert(kClampedSettings.jumpStep == 1000);
+static_assert(kClampedSettings.sizeStep == 50);
+static_assert(kClampedSettings.snapshotInterval == 10);
+static_assert(kClampedSettings.density == 5);
+static_assert(kClampedSettings.speed == 200);
 
 void testRules()
 {

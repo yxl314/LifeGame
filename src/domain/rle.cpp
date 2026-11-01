@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -90,20 +91,15 @@ bool parseNonNegativeInt(std::string_view text, int* value)
         return false;
     }
 
-    std::int64_t result = 0;
-    for (const char ch : text)
+    int parsed = 0;
+    const char* begin = text.data();
+    const char* end = begin + text.size();
+    const std::from_chars_result result = std::from_chars(begin, end, parsed);
+    if (result.ec != std::errc{} || result.ptr != end || parsed < 0 || parsed > 1'000'000)
     {
-        if (ch < '0' || ch > '9')
-        {
-            return false;
-        }
-        result = result * 10 + (ch - '0');
-        if (result > 1'000'000)
-        {
-            return false;
-        }
+        return false;
     }
-    *value = static_cast<int>(result);
+    *value = parsed;
     return true;
 }
 
@@ -176,17 +172,28 @@ RleErrorInfo parseHeader(std::string_view line, Header* header)
     return {};
 }
 
-void appendRun(std::string* output, int count, char tag)
+std::size_t appendUnsigned(std::string* output, std::size_t value)
+{
+    char buffer[32];
+    const std::to_chars_result result = std::to_chars(buffer, buffer + sizeof(buffer), value);
+    const std::size_t digits = static_cast<std::size_t>(result.ptr - buffer);
+    output->append(buffer, digits);
+    return digits;
+}
+
+std::size_t appendRun(std::string* output, int count, char tag)
 {
     if (count <= 0)
     {
-        return;
+        return 0;
     }
+    std::size_t length = 1;
     if (count > 1)
     {
-        output->append(std::to_string(count));
+        length += appendUnsigned(output, static_cast<std::size_t>(count));
     }
     output->push_back(tag);
+    return length;
 }
 
 void wrapLine(std::string* output, std::size_t* lineLength)
@@ -399,9 +406,9 @@ RleDecodeResult decodeRle(std::string_view text)
     }
 
     DecodedDocument document;
-    document.title = title;
-    document.description = description;
-    document.rule = header.rule;
+    document.title = std::move(title);
+    document.description = std::move(description);
+    document.rule = std::move(header.rule);
 
     Pattern& pattern = document.pattern;
     pattern.id = "rle";
@@ -446,12 +453,20 @@ std::string encodeRle(const Grid& board, const Rule& rule, std::string_view titl
     }
 
     std::string output;
+    output.reserve(static_cast<std::size_t>(width) * static_cast<std::size_t>(height) / 2u + 256u);
     if (!title.empty())
     {
-        output += "#N " + sanitizeTitle(title) + "\n";
+        output += "#N ";
+        output += sanitizeTitle(title);
+        output.push_back('\n');
     }
-    output += "x = " + std::to_string(width) + ", y = " + std::to_string(height) +
-              ", rule = " + rule.notation() + "\n";
+    output += "x = ";
+    appendUnsigned(&output, static_cast<std::size_t>(width));
+    output += ", y = ";
+    appendUnsigned(&output, static_cast<std::size_t>(height));
+    output += ", rule = ";
+    output += rule.notation();
+    output.push_back('\n');
 
     std::size_t lineLength = 0;
     for (int row = 0; row <= lastLiveRow; ++row)
@@ -476,8 +491,7 @@ std::string encodeRle(const Grid& board, const Rule& rule, std::string_view titl
             }
 
             wrapLine(&output, &lineLength);
-            appendRun(&output, run, alive ? 'o' : 'b');
-            lineLength += static_cast<std::size_t>(run > 1 ? std::to_string(run).size() + 1 : 1);
+            lineLength += appendRun(&output, run, alive ? 'o' : 'b');
             col += run;
         }
 

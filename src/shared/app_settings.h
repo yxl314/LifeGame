@@ -31,7 +31,7 @@ struct AppSettings
     bool gridVisible = true;
 };
 
-inline shared::AppSettings normalized(const shared::AppSettings& settings)
+constexpr shared::AppSettings normalized(const shared::AppSettings& settings) noexcept
 {
     shared::AppSettings result = settings;
     result.jumpStep = std::clamp(result.jumpStep, limits::kJumpStepMin, limits::kJumpStepMax);

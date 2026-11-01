@@ -317,6 +317,24 @@ UI 测试输出 `/tmp/lifegame-ui-tests.png`。CTest 为 UI 用例设置
 - **日志分层**：`app/logging` 是唯一安装 `qInstallMessageHandler` 的地方；
   model/service/controller/view 各自拥有 `Q_LOGGING_CATEGORY`，Domain 不引入 Qt 日志。
 
+## C++17 用法
+
+项目不是"为了用 C++17 而用 C++17"，性能相关的用法只出现在有收益的地方：
+
+- `std::string_view`：RLE/规则/图案查找全程借用，不复制字符串。
+- `std::optional`：`RleDecodeResult` 用值语义表达"成功/失败"，不做异常控制流。
+- `std::clamp` / `inline constexpr`：尺寸、密度、速度、快照范围共享同一组编译期常量。
+- `constexpr`：`Rule` 的构造、`births/survives`、`Grid::width/height`、
+  错误名、设置范围与 `shared::normalized` 可在编译期求值；测试中有 `static_assert`。
+- 移动语义：`Grid` 使用 `std::vector` 活动存储并支持 `noexcept` move；
+  `SimulationEngine` 把结果 move 给 Model，`LifeModel::applyStep` 再 move 进棋盘，
+  避免 1.5 MB 棋盘的深拷贝。`static_assert` 验证 `Grid`/`Rule` 的 nothrow move。
+- `std::from_chars`：RLE 头部整数解析不再走 `stoi`/手动乘加，且不分配。
+- `std::to_chars`：RLE 编码的游程长度写入栈上缓冲区，避免每个 run 一次
+  `std::to_string` 分配；大棋盘导出 RLE 时减少分配抖动。
+- 没有强行使用 `if constexpr`：当前热路径没有类型相关的编译期分支，加它只会增加
+  阅读成本；算法、缓存布局和 `QImage` 路径才是大棋盘性能的主要杠杆。
+
 ## 性能
 
 详见 **[docs/performance.md](docs/performance.md)**。历史测量（8 核 aarch64 / Qt 5.15）：

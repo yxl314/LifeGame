@@ -42,12 +42,12 @@ public:
 
     void clear();
 
-    int width() const
+    constexpr int width() const noexcept
     {
         return m_width;
     }
 
-    int height() const
+    constexpr int height() const noexcept
     {
         return m_height;
     }
