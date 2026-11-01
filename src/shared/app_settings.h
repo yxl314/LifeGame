@@ -2,10 +2,15 @@
 
 #include <algorithm>
 
+/**
+ * @file app_settings.h
+ * @brief Cross-layer application settings and limits.
+ */
+
 namespace lifegame::shared
 {
 
-/// Ranges shared by the settings dialog, the session store and validation.
+/// @brief Ranges shared by the settings dialog, session store and validation.
 namespace limits
 {
 inline constexpr int kJumpStepMin = 100;
@@ -20,25 +25,32 @@ inline constexpr int kDefaultSpeed = 10;
 inline constexpr int kDensityMin = 5;
 inline constexpr int kDensityMax = 90;
 
-// Above this cell count the View uses the image path and the controller
-// may coalesce repaints when the screen cannot keep up with the generation rate.
+/**
+ * @brief Cell count above which the view uses image rendering and the
+ * presenter may coalesce repaints when the screen cannot keep up.
+ */
 inline constexpr int kLargeBoardCellThreshold = 250000;
 } // namespace limits
 
-/// User-adjustable application settings (persisted with the session).
+/// @brief User-adjustable application settings persisted with the session.
 struct AppSettings
 {
-    int jumpStep = 100;
-    int sizeStep = 5;
-    int snapshotInterval = 100;
-    int density = 30;
-    int speed = limits::kDefaultSpeed;
-    bool gridVisible = true;
+    int jumpStep = 100;                    ///< Jump amount in generations.
+    int sizeStep = 5;                      ///< Board-size spinner step.
+    int snapshotInterval = 100;            ///< Snapshot interval in generations.
+    int density = 30;                      ///< Random-fill percentage.
+    int speed = limits::kDefaultSpeed;     ///< Generations per second (0 = pause).
+    bool gridVisible = true;               ///< Whether grid lines are shown.
 };
 
-constexpr shared::AppSettings normalized(const shared::AppSettings& settings) noexcept
+/**
+ * @brief Clamp every field to its supported range.
+ * @param settings Input settings.
+ * @return Normalized settings.
+ */
+constexpr AppSettings normalized(const AppSettings& settings) noexcept
 {
-    shared::AppSettings result = settings;
+    AppSettings result = settings;
     result.jumpStep = std::clamp(result.jumpStep, limits::kJumpStepMin, limits::kJumpStepMax);
     result.sizeStep = std::clamp(result.sizeStep, limits::kSizeStepMin, limits::kSizeStepMax);
     result.snapshotInterval =

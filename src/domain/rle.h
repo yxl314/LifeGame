@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file rle.h
+ * @brief Strict bounded RLE codec and typed errors.
+ */
+
 #include <cstddef>
 #include <optional>
 #include <string>
@@ -12,8 +17,7 @@
 namespace lifegame::domain
 {
 
-/// Stable error codes so the UI can localize messages; the domain never
-/// returns user-facing prose.
+/// @brief Stable RLE error codes; the domain never returns user-facing prose.
 enum class RleError
 {
     None = 0,
@@ -50,42 +54,50 @@ constexpr const char* rleErrorName(RleError error) noexcept
     return "Unknown";
 }
 
+/// @brief Machine-readable RLE failure with source location.
 struct RleErrorInfo
 {
-    RleError code = RleError::None;
-
-    /// Original byte offset in the input (0-based).
-    std::size_t position = 0;
-
-    /// 1-based source location for user-facing diagnostics.
-    int line = 1;
-    int column = 1;
+    RleError code = RleError::None; ///< Stable error code.
+    std::size_t position = 0;       ///< Original byte offset (0-based).
+    int line = 1;                   ///< 1-based source line.
+    int column = 1;                 ///< 1-based source column.
 };
 
+/// @brief Successfully decoded RLE document.
 struct DecodedDocument
 {
-    Pattern pattern;
-    std::string title;
-    std::string description;
-    std::string rule; // canonical notation, empty when absent
+    Pattern pattern;          ///< Decoded cells and dimensions.
+    std::string title;        ///< Optional `#N` header.
+    std::string description;  ///< Optional `#C` header (first line).
+    std::string rule;         ///< Canonical B/S notation, empty when absent.
 };
 
+/// @brief Result of decodeRle(): a document or a typed error.
 struct RleDecodeResult
 {
-    std::optional<DecodedDocument> document;
-    RleErrorInfo error;
+    std::optional<DecodedDocument> document; ///< Decoded document on success.
+    RleErrorInfo error;                      ///< Error details on failure.
 };
 
 /**
- * Decode RLE text.
+ * @brief Decode RLE text.
  *
  * The parser is intentionally strict and bounded: a malformed or hostile file
  * can never make the column/row counters overflow or make the decoder write
  * outside its buffers.
+ *
+ * @param text RLE source text.
+ * @return Decoded document or a typed error with line/column.
  */
 RleDecodeResult decodeRle(std::string_view text);
 
-/// Encode the full board size in the header and stop the body at the last live row.
+/**
+ * @brief Encode a board as RLE.
+ * @param board Board to encode.
+ * @param rule Rule written into the header.
+ * @param title Optional `#N` title.
+ * @return Complete RLE text with header and terminating '!'.
+ */
 std::string encodeRle(const Grid& board, const Rule& rule, std::string_view title = {});
 
 } // namespace lifegame::domain

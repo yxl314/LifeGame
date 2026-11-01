@@ -1,19 +1,24 @@
 #pragma once
 
+/**
+ * @file file_error.h
+ * @brief Typed file and image errors.
+ */
+
 namespace lifegame::service
 {
 
 /// Recoverable infrastructure failures. The UI turns these into one message.
 enum class FileError
 {
-    None = 0,
-    OpenFailed,
-    ReadFailed,
-    WriteFailed,
-    DecodeFailed,
-    EncodeFailed,
-    NullImage,
-    TooLarge
+    None = 0,      ///< Success.
+    OpenFailed,    ///< Could not open the file.
+    ReadFailed,    ///< Read/error while loading.
+    WriteFailed,   ///< Write/flush failed.
+    DecodeFailed,  ///< Content is not valid RLE.
+    EncodeFailed,  ///< PNG encoder failed.
+    NullImage,     ///< Null image passed to the exporter.
+    TooLarge       ///< File exceeds the configured size cap.
 };
 
 constexpr const char* fileErrorName(FileError error) noexcept

@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file configuration_controller.h
+ * @brief Rule and boundary configuration controller.
+ */
+
 #include <QObject>
 #include <QString>
 
@@ -20,12 +25,17 @@ class RuleCatalog;
 namespace lifegame::controller
 {
 
-/// Rule/boundary input from the panel or the menu.
+/// @brief Rule/boundary input from the panel or the menu.
 class ConfigurationController : public QObject
 {
     Q_OBJECT
 
 public:
+    /// @param model Writable model.
+    /// @param panel Rule/boundary controls.
+    /// @param catalog Rule presentation catalog.
+    /// @param messages Status output port.
+    /// @param parent QObject parent.
     ConfigurationController(model::LifeModel* model,
                             view::ControlPanel* panel,
                             const view::RuleCatalog* catalog,
@@ -33,10 +43,14 @@ public:
                             QObject* parent = nullptr);
 
 public slots:
+    /// @param index Preset index.
     void setRuleIndex(int index);
+    /// @param notation B/S notation.
     void setRuleByNotation(const QString& notation);
+    /// @param index 0 = dead, 1 = wrap.
     void setBoundaryIndex(int index);
 
+    /// @param group Checkable rule action group.
     void setRuleActionGroup(QActionGroup* group);
 
 private:

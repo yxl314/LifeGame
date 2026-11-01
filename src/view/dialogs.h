@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file dialogs.h
+ * @brief Localized message-box helpers.
+ */
+
 #include <QString>
 
 class QWidget;
@@ -7,8 +12,10 @@ class QWidget;
 namespace lifegame::view
 {
 
-/// Chinese-labeled warning box; QMessageBox::warning's standard button text
-/// is English unless a Qt translation is installed.
+/// @brief Show a Chinese-labeled warning box.
+/// @param parent Dialog parent.
+/// @param title Dialog title.
+/// @param text Warning text.
 void showWarning(QWidget* parent, const QString& title, const QString& text);
 
 } // namespace lifegame::view

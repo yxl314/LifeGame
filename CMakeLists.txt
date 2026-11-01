@@ -215,6 +215,18 @@ lifegame_set_warnings(lifegame)
 install(TARGETS lifegame RUNTIME DESTINATION bin)
 
 # ---------------------------------------------------------------------------
+# Documentation (optional; requires Doxygen).
+# ---------------------------------------------------------------------------
+find_package(Doxygen QUIET)
+if(DOXYGEN_FOUND)
+    add_custom_target(docs
+        COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        COMMENT "Generating Doxygen HTML in docs/doxygen/html"
+        VERBATIM)
+endif()
+
+# ---------------------------------------------------------------------------
 # Tests.
 # ---------------------------------------------------------------------------
 if(LIFEGAME_BUILD_TESTS)

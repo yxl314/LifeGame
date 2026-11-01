@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file board_controller.h
+ * @brief Mouse, pattern and board-command input controller.
+ */
+
 #include <QObject>
 #include <QVector>
 
@@ -25,12 +30,21 @@ class PatternCatalog;
 namespace lifegame::controller
 {
 
-/// Mouse input for the board: painting, stamping, clear/random/demo, grid.
+/// @brief Board input and commands: painting, stamping, clear/random/demo, grid.
 class BoardController : public QObject
 {
     Q_OBJECT
 
 public:
+    /**
+     * @param model Writable model.
+     * @param view Board view for mouse input.
+     * @param panel Side panel for intents.
+     * @param catalog Pattern presentation catalog.
+     * @param messages Status output port.
+     * @param confirm Destructive-action confirmation port.
+     * @param parent QObject parent.
+     */
     BoardController(model::LifeModel* model,
                     view::BoardView* view,
                     view::ControlPanel* panel,
@@ -39,15 +53,25 @@ public:
                     view::ConfirmSink* confirm,
                     QObject* parent = nullptr);
 
+    /// @param action Checkable menu action mirroring grid visibility.
     void setGridAction(QAction* action);
+
+    /// @return Current grid visibility.
     bool gridVisible() const;
 
 public slots:
+    /// @param visible New grid visibility.
     void setGridVisible(bool visible);
+    /// @brief Clear the board after confirmation.
     void clearBoard();
+    /// @brief Randomize the board.
     void randomizeBoard();
+    /// @brief Load the built-in demo pattern.
     void loadDemo();
+    /// @param patternId Pattern index, or -1 for brush.
     void selectPattern(int patternId);
+    /// @param width New width.
+    /// @param height New height.
     void resizeBoard(int width, int height);
 
 private slots:

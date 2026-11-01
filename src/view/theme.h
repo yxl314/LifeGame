@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file theme.h
+ * @brief Dark Fusion theme and application icon.
+ */
+
 #include <QIcon>
 
 class QApplication;
@@ -7,10 +12,11 @@ class QApplication;
 namespace lifegame::view::theme
 {
 
-/// Apply the dark Fusion look. Must be called before creating windows.
+/// @brief Apply the dark Fusion look. Must run before creating windows.
+/// @param app Application instance.
 void apply(QApplication& app);
 
-/// Programmatically drawn application icon (no external asset to forget).
+/// @return Programmatically drawn application icon.
 QIcon appIcon();
 
 } // namespace lifegame::view::theme

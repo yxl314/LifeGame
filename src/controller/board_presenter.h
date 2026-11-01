@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file board_presenter.h
+ * @brief Model-to-view presenter and frame scheduler.
+ */
+
 #include <QMetaObject>
 #include <QObject>
 
@@ -24,7 +29,7 @@ namespace lifegame::controller
 {
 
 /**
- * Pushes Model state into the passive views and owns the frame scheduler.
+ * @brief Pushes Model state into passive views and owns the frame scheduler.
  *
  * BoardController handles input/commands only; this presenter owns the
  * Model->View direction and the decision to coalesce repaints.
@@ -34,15 +39,19 @@ class BoardPresenter : public QObject
     Q_OBJECT
 
 public:
+    /// @param model Model to observe.
+    /// @param view Passive board view.
+    /// @param panel Passive side panel.
+    /// @param parent QObject parent.
     BoardPresenter(model::LifeModel* model,
                    view::BoardView* view,
                    view::ControlPanel* panel,
                    QObject* parent = nullptr);
 
-    /// Sync with the current model state, bypassing the frame timer.
+    /// @brief Sync with current model state, bypassing the frame timer.
     void sync();
 
-    /// Set the current generation rate used for the frame-budget decision.
+    /// @param generationsPerSecond Current simulation rate.
     void setGenerationRate(int generationsPerSecond);
 
 private slots:

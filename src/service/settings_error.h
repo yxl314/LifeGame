@@ -1,14 +1,19 @@
 #pragma once
 
+/**
+ * @file settings_error.h
+ * @brief Typed settings persistence errors.
+ */
+
 namespace lifegame::service
 {
 
 enum class SettingsError
 {
-    None = 0,
-    AccessError,
-    FormatError,
-    CorruptData
+    None = 0,      ///< Success.
+    AccessError,   ///< File cannot be read/written.
+    FormatError,   ///< QSettings format is invalid.
+    CorruptData    ///< One or more values are malformed/clamped.
 };
 
 constexpr const char* settingsErrorName(SettingsError error) noexcept

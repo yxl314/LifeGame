@@ -1,18 +1,25 @@
 #pragma once
 
+/**
+ * @file stall_reason.h
+ * @brief Reasons the simulation stops by itself.
+ */
+
 #include <QMetaType>
 
 namespace lifegame::model
 {
 
-/// Why the simulation stopped by itself. Localized text belongs to the view.
+/// @brief Why the simulation stopped by itself.
 enum class StallReason
 {
-    EmptyBoard = 0,
-    Extinct,
-    StillLife
+    EmptyBoard = 0, ///< No alive cells.
+    Extinct,        ///< All cells died during evolution.
+    StillLife       ///< Board stopped changing.
 };
 
+/// @param reason Stall reason.
+/// @return Stable ASCII name for logs/tests.
 constexpr const char* stallReasonName(StallReason reason) noexcept
 {
     switch (reason)

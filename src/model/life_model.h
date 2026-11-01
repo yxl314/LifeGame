@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file life_model.h
+ * @brief Observable application model.
+ */
+
 #include <QFutureWatcher>
 #include <QObject>
 
@@ -32,7 +37,7 @@ namespace lifegame::model
 {
 
 /**
- * Observable application model for Conway's Game of Life.
+ * @brief Observable application model for Conway's Game of Life.
  *
  * Layered MVC contract:
  *  - Model knows nothing about views, services or controllers.
@@ -49,71 +54,171 @@ class LifeModel : public QObject
     Q_OBJECT
 
 public:
+    /**
+     * @brief Create a model with a default board.
+     * @param parent QObject parent.
+     */
     explicit LifeModel(QObject* parent = nullptr);
     ~LifeModel() override;
 
-    // ---- read-only queries (the view's entire model surface) ----
+    /// @return Current board (read-only).
     const domain::Grid& board() const;
+
+    /// @return Current board width.
     int width() const;
+
+    /// @return Current board height.
     int height() const;
+
+    /// @return Current generation/population/density snapshot.
     shared::LifeStats stats() const;
+
+    /// @return Current Life-like rule.
     const domain::Rule& rule() const;
+
+    /// @return Current boundary policy.
     domain::Boundary boundary() const;
+
+    /// @return True while the simulation clock is running.
     bool isRunning() const;
+
+    /// @return True while a background jump is in progress.
     bool isJumping() const;
+
+    /// @return Oldest generation reachable from retained snapshots.
     int oldestGeneration() const;
+
+    /// @return Snapshot interval in generations.
     int snapshotInterval() const;
 
-    /// RLE text for the current board/rule (no file I/O).
+    /// @param title Optional RLE title.
+    /// @return RLE text for the current board/rule (no file I/O).
     std::string toRle(std::string_view title = {}) const;
 
     // ---- commands (controllers only) ----
-    /// Paint-path operations return "did anything change"; they have no
-    /// user-facing failure reason beyond out-of-bounds/no-change.
+    /// @param row Row index.
+    /// @param col Column index.
+    /// @param alive New state.
+    /// @return True when the board changed.
     bool setCell(int row, int col, bool alive);
+
+    /// @param row Row index.
+    /// @param col Column index.
+    /// @return True when the board changed (mutating toggle happened).
     bool toggleCell(int row, int col);
 
-    /// Batch edit used by drag painting; emits at most one pair of signals.
+    /// @param cells Coordinates to paint.
+    /// @param alive Desired state.
+    /// @return True when at least one cell changed.
     bool setCells(const std::vector<std::pair<int, int>>& cells, bool alive);
+
+    /// @param pattern Pattern to place.
+    /// @param centerRow Center row.
+    /// @param centerCol Center column.
+    /// @return Success, Clipped, Busy, InvalidPattern or TooLarge.
     CommandResult placePattern(const domain::Pattern& pattern, int centerRow, int centerCol);
+
+    /// @return Success after clearing the board.
     CommandResult clear();
+
+    /// @param densityPercent Alive percentage.
+    /// @return Success, adjusted, or failure code.
     CommandResult randomize(int densityPercent);
+
+    /// @param width Requested width.
+    /// @param height Requested height.
+    /// @return Success, Adjusted, or failure code.
     CommandResult resizeBoard(int width, int height);
+
+    /// @param rule New rule.
+    /// @return Success or NoChange.
     CommandResult setRule(const domain::Rule& rule);
+
+    /// @param notation B/S notation.
+    /// @return Success, NoChange or InvalidRule.
     CommandResult setRuleByNotation(std::string_view notation);
+
+    /// @param boundary New boundary policy.
+    /// @return Success or NoChange.
     CommandResult setBoundary(domain::Boundary boundary);
+
+    /// @param generations Snapshot interval.
+    /// @return Success, NoChange or Busy.
     CommandResult setSnapshotInterval(int generations);
 
-    /// Restore-only state forging (used by SessionController).
+    /// @param generation Generation to set (restore-only).
+    /// @return Success or Busy.
     CommandResult setGeneration(int generation);
+
+    /// @param document Decoded RLE document.
+    /// @return Success or a typed failure.
     CommandResult loadDocument(const domain::DecodedDocument& document);
 
-    /// Evolve one generation synchronously (single-step).
+    /// @return Success after one synchronous generation.
     CommandResult step();
 
-    /// Request one asynchronous generation; returns Busy/NotRunning/Success.
+    /// @return Busy, NotRunning or Success for an async step request.
     CommandResult requestStep();
 
+    /// @param running Desired running state.
+    /// @return Success, NoChange, EmptyBoard or Busy.
     CommandResult setRunning(bool running);
+
+    /// @return Result of toggling the running state.
     CommandResult toggleRunning();
 
-    /// Jump forward (positive) or rewind (negative) by replaying snapshots.
+    /// @param targetGeneration Target generation.
+    /// @return Success, NoHistory, InvalidTarget, Busy or OutOfMemory.
     CommandResult startJump(int targetGeneration);
+
+    /// @brief Request cooperative cancellation of the active jump.
     void cancelJump();
 
 signals:
+    /// @brief Emitted when cells/population/layout changed.
     void boardChanged();
+
+    /// @brief Emitted when the board dimensions changed.
+    /// @param width New width.
+    /// @param height New height.
     void boardResized(int width, int height);
+
+    /// @brief Emitted when generation/population/density changed.
+    /// @param stats New statistics.
     void statusChanged(const lifegame::shared::LifeStats& stats);
+
+    /// @brief Emitted when the running state changed.
+    /// @param running New state.
     void runningChanged(bool running);
+
+    /// @brief Emitted when rule/boundary/snapshot interval changed.
     void configurationChanged();
+
+    /// @brief Emitted when the simulation stopped because it stalled.
+    /// @param reason Stall reason.
     void simulationStalled(lifegame::model::StallReason reason);
+
+    /// @brief Emitted when a background calculation failed.
+    /// @param reason Failure code.
     void stepFailed(lifegame::model::CommandResult reason);
 
+    /// @brief Emitted when a rewind/fast-forward started.
+    /// @param info Jump parameters.
     void jumpStarted(const lifegame::shared::JumpInfo& info);
+
+    /// @brief Emitted periodically during a jump.
+    /// @param done Replayed generations.
     void jumpProgress(int done);
+
+    /// @brief Emitted when a jump completed.
+    /// @param generation Final generation.
     void jumpFinished(int generation);
+
+    /// @brief Emitted when a jump was cancelled.
     void jumpCancelled();
+
+    /// @brief Emitted when a jump failed.
+    /// @param reason Failure code.
     void jumpFailed(lifegame::model::CommandResult reason);
 
 private slots:

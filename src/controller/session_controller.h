@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file session_controller.h
+ * @brief Session restore/save and settings lifecycle coordinator.
+ */
+
 #include <QObject>
 
 #include "shared/app_settings.h"
@@ -32,13 +37,20 @@ class BoardController;
 class SessionService;
 class SimulationController;
 
-/// Application/session coordinator: restore on start, persist on exit.
-/// The SettingsController owns the dialog; file services live elsewhere.
+/// @brief Application/session coordinator: restore on start, persist on exit.
 class SessionController : public QObject
 {
     Q_OBJECT
 
 public:
+    /// @param model Model to restore/save.
+    /// @param panel Settings/UI source.
+    /// @param simulation Speed target.
+    /// @param board Grid target.
+    /// @param store Persistence store.
+    /// @param window Window geometry source.
+    /// @param messages Status output port.
+    /// @param parent QObject parent.
     SessionController(model::LifeModel* model,
                       view::ControlPanel* panel,
                       SimulationController* simulation,
@@ -49,14 +61,16 @@ public:
                       QObject* parent = nullptr);
     ~SessionController() override;
 
-    /// Returns true when a persisted board was restored.
+    /// @return True when a persisted board was restored; falls back to default board.
     bool restore();
 
+    /// @return Save result code.
     service::SettingsError save();
 
+    /// @return Last applied/normalized settings.
     const shared::AppSettings& settings() const;
 
-    /// Apply the three editable settings fields (snapshot/jump/size).
+    /// @param values Settings to normalize and apply.
     void applySettings(const shared::AppSettings& values);
 
     model::LifeModel* m_model = nullptr;

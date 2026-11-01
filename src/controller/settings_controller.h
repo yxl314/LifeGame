@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file settings_controller.h
+ * @brief Settings dialog controller.
+ */
+
 #include <QObject>
 
 class QMainWindow;
@@ -19,12 +24,17 @@ namespace lifegame::controller
 
 class SessionController;
 
-/// Settings-dialog input and application; separate from session persistence.
+/// @brief Settings-dialog input and application.
 class SettingsController : public QObject
 {
     Q_OBJECT
 
 public:
+    /// @param model Model to inspect/apply.
+    /// @param session Session owner of current settings.
+    /// @param window Dialog parent.
+    /// @param messages Status output port.
+    /// @param parent QObject parent.
     SettingsController(model::LifeModel* model,
                        SessionController* session,
                        QMainWindow* window,
@@ -32,6 +42,7 @@ public:
                        QObject* parent = nullptr);
 
 public slots:
+    /// @brief Open the settings dialog and save on acceptance.
     void openSettings();
 
 private:

@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file session_state.h
+ * @brief Persisted session value object.
+ */
+
 #include <QByteArray>
 #include <QString>
 
@@ -8,15 +13,15 @@
 namespace lifegame::service
 {
 
-/// Everything persisted between runs.
+/// @brief Everything persisted between runs.
 struct SessionState
 {
-    shared::AppSettings settings;
-    QString boardRle;
-    QString ruleNotation = QStringLiteral("B3/S23");
-    int boundary = 0; // 0 = dead, 1 = wrap
-    int generation = 0;
-    QByteArray windowGeometry;
+    shared::AppSettings settings;                    ///< User settings.
+    QString boardRle;                                ///< Encoded board.
+    QString ruleNotation = QStringLiteral("B3/S23"); ///< Canonical rule.
+    int boundary = 0;                                ///< 0 = dead, 1 = wrap.
+    int generation = 0;                              ///< Current generation.
+    QByteArray windowGeometry;                       ///< Saved window geometry.
 };
 
 } // namespace lifegame::service

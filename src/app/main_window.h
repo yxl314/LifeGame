@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file main_window.h
+ * @brief Application composition root and shell wiring.
+ */
+
 #include <QMainWindow>
 
 #include <memory>
@@ -46,7 +51,7 @@ namespace lifegame::app
 {
 
 /**
- * Composition root only.
+ * @brief Composition root and application shell.
  *
  * Creates the model, views, catalogs, services and controllers; wires menus
  * and the toolbar; nothing here implements game rules or persistence.
@@ -56,6 +61,10 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
+    /**
+     * @param parent Parent widget.
+     * @param confirm Optional confirmation sink; null uses MessageBoxConfirmSink.
+     */
     explicit MainWindow(QWidget* parent = nullptr, view::ConfirmSink* confirm = nullptr);
     ~MainWindow() override;
 

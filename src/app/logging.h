@@ -1,25 +1,35 @@
 #pragma once
 
+/**
+ * @file logging.h
+ * @brief File-backed Qt message handler and logging options.
+ */
+
 #include <QLoggingCategory>
 #include <QString>
 
 namespace lifegame::app::logging
 {
 
+/// @brief Logging sink and filtering options.
 struct Options
 {
-    bool verbose = false;
-    bool mirrorToStderr = true;
-    QString filePath; // empty: QStandardPaths::AppLocalDataLocation/logs/life-game.log
+    bool verbose = false;        ///< Enable lifegame.* debug logging.
+    bool mirrorToStderr = true;  ///< Mirror accepted messages to stderr.
+    QString filePath;            ///< Empty = default AppLocalDataLocation path.
 };
 
-/// Install the file-backed Qt message handler. Returns false when the file
-/// sink cannot be opened (the app still runs with stderr logging).
+/**
+ * @brief Install the file-backed Qt message handler.
+ * @param options Sink/filter options.
+ * @return False when the file sink cannot be opened; stderr logging still works.
+ */
 bool initialize(const Options& options);
 
-/// Restore the previous handler and flush/close the file. Idempotent.
+/// @brief Restore the previous handler and flush/close the file. Idempotent.
 void shutdown();
 
+/// @return Active log file path, or empty before initialize().
 QString logFilePath();
 
 } // namespace lifegame::app::logging

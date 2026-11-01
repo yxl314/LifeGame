@@ -1,16 +1,18 @@
 #pragma once
 
+/**
+ * @file boundary.h
+ * @brief Finite-board boundary policy.
+ */
+
 namespace lifegame::domain
 {
 
-/// How cells outside the finite board are treated.
+/// @brief How cells outside the finite board are treated.
 enum class Boundary
 {
-    /// Outside the board is always dead.
-    Dead = 0,
-
-    /// The board wraps like a torus.
-    Wrap = 1
+    Dead = 0, ///< Outside the board is always dead.
+    Wrap = 1  ///< The board wraps like a torus.
 };
 
 } // namespace lifegame::domain

@@ -8,6 +8,7 @@ CMakeFiles/
 cmake_install.cmake
 CTestTestfile.cmake
 Testing/
+docs/doxygen/
 compile_commands.json
 CMakeUserPresets.json
 

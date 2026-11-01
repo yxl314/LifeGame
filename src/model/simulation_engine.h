@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file simulation_engine.h
+ * @brief Asynchronous one-generation computation engine.
+ */
+
 #include <QFutureWatcher>
 #include <QObject>
 
@@ -15,7 +20,7 @@ namespace lifegame::model
 {
 
 /**
- * Asynchronous one-generation computation.
+ * @brief Asynchronous one-generation computation.
  *
  * The engine owns the snapshot and the output buffer. `request()` returns a
  * monotonically increasing id; `stepReady(id)` is emitted on the UI thread when
@@ -35,23 +40,36 @@ public:
     explicit SimulationEngine(QObject* parent = nullptr);
     ~SimulationEngine() override;
 
+    /// @return True while a computation is in flight.
     bool isBusy() const;
 
-    /// Starts a request and writes its id. Returns Busy/OutOfBounds/OutOfMemory
-    /// on failure; no exceptions are used.
+    /**
+     * @brief Start one asynchronous generation.
+     * @param board Read-only current board.
+     * @param rule Rule to apply.
+     * @param boundary Boundary policy.
+     * @param requestId Output request id; must not be null.
+     * @return Success, Busy, OutOfBounds or OutOfMemory.
+     */
     CommandResult request(const domain::Grid& board,
                           const domain::Rule& rule,
                           domain::Boundary boundary,
                           quint64* requestId);
 
-    /// Invalidate the in-flight request; the worker is not interrupted.
+    /// @brief Invalidate the in-flight request; the worker is not interrupted.
     void discardPending();
 
-    /// Move the finished generation out of the engine.
+    /// @brief Move the finished generation out of the engine.
+    /// @return Finished board; only call after stepReady().
     domain::Grid takeResult();
 
 signals:
+    /// @brief Emitted on the UI thread when a generation is ready.
+    /// @param requestId Id returned by request().
     void stepReady(quint64 requestId);
+
+    /// @brief Emitted when the computation failed or was incomplete.
+    /// @param reason Failure code.
     void stepFailed(lifegame::model::CommandResult reason);
 
 private slots:

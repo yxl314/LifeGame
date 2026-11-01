@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file file_controller.h
+ * @brief RLE open/save and PNG export controller.
+ */
+
 #include <QObject>
 #include <QString>
 
@@ -29,20 +34,28 @@ class MessageSink;
 namespace lifegame::controller
 {
 
-/// Open/save/export input and file dialogs.
+/// @brief RLE open/save and PNG export controller.
 class FileController : public QObject
 {
     Q_OBJECT
 
 public:
+    /// @brief Combined file/decode/model result of opening a path.
     struct OpenResult
     {
-        service::FileError fileError = service::FileError::None;
-        domain::RleErrorInfo decodeError;
-        model::CommandResult modelResult = model::CommandResult::Success;
-        QString detail;
+        service::FileError fileError = service::FileError::None; ///< I/O/decode error.
+        domain::RleErrorInfo decodeError;                        ///< RLE parser details.
+        model::CommandResult modelResult = model::CommandResult::Success; ///< Model load result.
+        QString detail;                                          ///< Optional system detail.
     };
 
+    /// @param model Writable model.
+    /// @param view Board view for PNG export.
+    /// @param messages Status output port.
+    /// @param dialogParent Parent for file dialogs.
+    /// @param rleService RLE file port.
+    /// @param imageService PNG output port.
+    /// @param parent QObject parent.
     FileController(model::LifeModel* model,
                    view::BoardView* view,
                    view::MessageSink* messages,
@@ -51,15 +64,24 @@ public:
                    service::ImageFilePort* imageService,
                    QObject* parent = nullptr);
 
-    /// Path-based operations used by the dialogs and by tests.
+    /// @param path RLE path.
+    /// @return Combined open result.
     OpenResult openPath(const QString& path);
+
+    /// @param path Destination path.
+    /// @param detail Optional error detail.
+    /// @return File error code.
     service::FileError savePath(const QString& path, QString* detail = nullptr);
+
+    /// @param path PNG destination.
+    /// @param detail Optional error detail.
+    /// @return File error code.
     service::FileError exportPath(const QString& path, QString* detail = nullptr);
 
 public slots:
-    void openRle();
-    void saveRle();
-    void exportImage();
+    void openRle();     ///< Show open dialog.
+    void saveRle();     ///< Show save dialog.
+    void exportImage(); ///< Show PNG export dialog.
 
 private:
     QString rleErrorMessage(const domain::RleErrorInfo& error) const;

@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file board_view.h
+ * @brief Custom-painted passive board view.
+ */
+
 #include <QElapsedTimer>
 
 #include <optional>
@@ -21,7 +26,7 @@ namespace lifegame::view
 {
 
 /**
- * Custom-painted board view.
+ * @brief Custom-painted, passive board view.
  *
  * Layered MVC passive view: the controller pushes a `const domain::Grid*`
  * plus a little render state. The view never includes or observes the Model,
@@ -32,19 +37,29 @@ class BoardView : public QWidget
     Q_OBJECT
 
 public:
+    /// @param parent Parent widget.
     explicit BoardView(QWidget* parent = nullptr);
 
-    /// Passive-view API: the controller owns the model and pushes a read-only
-    /// board pointer plus the small amount of state this view renders.
+    /// @brief Legacy partial setter; prefer applyFrame().
+    /// @param board Read-only board pointer.
     void setBoard(const domain::Grid* board);
+
+    /// @brief Legacy partial setter; prefer applyFrame().
+    /// @param population Alive-cell count.
     void setPopulation(int population);
+
+    /// @brief Legacy partial setter; prefer applyFrame().
+    /// @param running Running state.
     void setRunning(bool running);
+
+    /// @brief Request a repaint.
     void refresh();
 
-    /// Atomic board frame update used by BoardPresenter.
+    /// @brief Atomically apply one complete board frame.
+    /// @param frame Board pointer, population and running state.
     void applyFrame(const BoardFrame& frame);
 
-    /// Last paint duration, used by the presenter's frame-budget decision.
+    /// @return Duration of the last paint in milliseconds (0 before first paint).
     double lastPaintDurationMs() const
     {
         return m_last_paint_ms;
@@ -53,19 +68,42 @@ public:
     QSize sizeHint() const override;
     QSize minimumSizeHint() const override;
 
+    /// @return True when grid lines are visible.
     bool gridVisible() const;
+
+    /// @return Full-board PNG-ready image (export path).
     QImage renderBoardImage() const;
 
 public slots:
+    /// @param offsets Pattern offsets relative to the hover cell.
     void setStampPreview(const QVector<QPoint>& offsets);
+
+    /// @param visible Whether grid lines are shown.
     void setGridVisible(bool visible);
+
+    /// @brief Zoom in one step.
     void zoomIn();
+
+    /// @brief Zoom out one step.
     void zoomOut();
+
+    /// @brief Return to auto-fit zoom and centered pan.
     void resetZoom();
 
 signals:
+    /// @brief Primary mouse button pressed on a cell.
+    /// @param row Cell row.
+    /// @param col Cell column.
     void cellPressed(int row, int col);
+
+    /// @brief Primary button dragged over a cell.
+    /// @param row Cell row.
+    /// @param col Cell column.
     void cellDragged(int row, int col);
+
+    /// @brief Primary button released over a cell.
+    /// @param row Cell row.
+    /// @param col Cell column.
     void cellReleased(int row, int col);
 
 protected:

@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file settings_dialog.h
+ * @brief Settings value editor view.
+ */
+
 #include <QDialog>
 
 #include "shared/app_settings.h"
@@ -17,7 +22,10 @@ class SettingsDialog : public QDialog
 public:
     explicit SettingsDialog(QWidget* parent = nullptr);
 
+    /// @param values Current settings to display; unedited fields are retained.
     void setValues(const shared::AppSettings& values);
+
+    /// @return Edited settings merged with retained fields.
     shared::AppSettings values() const;
 
 private:

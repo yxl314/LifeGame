@@ -110,7 +110,7 @@
 
 完整契约见 **[docs/architecture.md](docs/architecture.md)**；
 大棋盘渲染 profile 见 **[docs/rendering-profile.md](docs/rendering-profile.md)**；
-独立审计（不引用文档作为证据）见 **[docs/architecture-audit.md](docs/architecture-audit.md)**。
+独立审计（不引用文档作为证据）见 **docs/architecture-audit.md**。
 
 ### 分层
 
@@ -236,6 +236,20 @@ ctest --preset debug
 `cmake --build build --parallel 8`。CI 也固定 `--parallel 8`。
 
 Qt Creator 可直接打开根目录的 `CMakeLists.txt`。本项目不再维护 qmake 工程。
+
+### Doxygen 文档
+
+公共头文件使用标准 Doxygen 注释（`@file`、`@brief`、`@param`、`@return`、
+`@note`）。需要 Doxygen 1.9+：
+
+```bash
+doxygen Doxyfile
+# 或
+cmake --build --preset debug --target docs
+```
+
+输出在 `docs/doxygen/html/index.html`（已加入 `.gitignore`）。
+当前 `doxygen Doxyfile` 为 **0 warnings**。
 
 ### 命令行与日志
 
