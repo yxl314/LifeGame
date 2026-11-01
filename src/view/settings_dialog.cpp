@@ -60,7 +60,7 @@ SettingsDialog::SettingsDialog(QWidget* parent)
     root->addLayout(form);
 
     auto* hint = new QLabel(
-        tr("快照间隔越小，回退越快；但可快速回退的代数范围也越小（保留 64 张快照，约 10 MB）。"
+        tr("快照间隔越小，回退越快；但可快速回退的代数范围也越小（保留 64 张快照；大棋盘快照占用更高）。"
            "修改快照间隔会重置当前的回退历史。"),
         this);
     hint->setObjectName(QStringLiteral("Muted"));

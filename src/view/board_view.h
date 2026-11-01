@@ -91,7 +91,7 @@ private:
                           const QRectF& boardRect,
                           bool interactive) const;
     void updateGridPixmap(const QRectF& boardRect, double cellPixels) const;
-    void drawGridLines(QPainter& painter, const QRectF& boardRect, double cellPixels) const;
+    void drawGridLines(QPainter& painter, const QRectF& boardRect, double cellPixels, int stride = 1) const;
 
     const domain::Grid* m_board = nullptr;
     int m_population = 0;

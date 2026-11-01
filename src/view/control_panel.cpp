@@ -315,23 +315,23 @@ void ControlPanel::setupUi()
 
     m_widthSpin = new QSpinBox(sizeGroup);
     m_widthSpin->setObjectName(QStringLiteral("WidthSpin"));
-    m_widthSpin->setRange(domain::kMinBoardExtent, domain::kMaxBoardExtent);
+    m_widthSpin->setRange(domain::kMinBoardExtent, domain::kMaxBoardWidth);
     m_widthSpin->setSingleStep(5);
     m_widthSpin->setValue(domain::kDefaultBoardWidth);
-    m_widthSpin->setFixedWidth(62);
+    m_widthSpin->setFixedWidth(72);
     m_widthSpin->setKeyboardTracking(false);
     m_widthSpin->setAccessibleName(tr("棋盘宽度"));
-    m_widthSpin->setToolTip(tr("列数（20 - 400）"));
+    m_widthSpin->setToolTip(tr("列数（20 - 1000）"));
 
     m_heightSpin = new QSpinBox(sizeGroup);
     m_heightSpin->setObjectName(QStringLiteral("HeightSpin"));
-    m_heightSpin->setRange(domain::kMinBoardExtent, domain::kMaxBoardExtent);
+    m_heightSpin->setRange(domain::kMinBoardExtent, domain::kMaxBoardHeight);
     m_heightSpin->setSingleStep(5);
     m_heightSpin->setValue(domain::kDefaultBoardHeight);
-    m_heightSpin->setFixedWidth(62);
+    m_heightSpin->setFixedWidth(72);
     m_heightSpin->setKeyboardTracking(false);
     m_heightSpin->setAccessibleName(tr("棋盘高度"));
-    m_heightSpin->setToolTip(tr("行数（20 - 400）"));
+    m_heightSpin->setToolTip(tr("行数（20 - 1500）"));
 
     auto* times = new QLabel(QStringLiteral("×"), sizeGroup);
     times->setObjectName(QStringLiteral("Muted"));

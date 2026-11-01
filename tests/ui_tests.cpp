@@ -4,6 +4,7 @@
 #include <QLabel>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QPushButton>
 #include <QSettings>
 #include <QSpinBox>
 #include <QTemporaryDir>
@@ -75,6 +76,7 @@ private slots:
     void clearRequiresConfirmation();
     void spaceDoesNotStealFocusedControl();
     void gridActionMirrorsPanel();
+    void largeBoardResizeAndRender();
 
 private:
     QTemporaryDir m_settingsDir;
@@ -214,6 +216,55 @@ void UiTests::gridActionMirrorsPanel()
     QVERIFY(boundary != nullptr);
     QCOMPARE(boundary->count(), 2);
     QVERIFY(!boundary->currentText().isEmpty());
+    window.close();
+}
+
+void UiTests::largeBoardResizeAndRender()
+{
+    AcceptConfirm confirm;
+    lifegame::app::MainWindow window(nullptr, &confirm);
+    window.resize(1180, 820);
+    window.show();
+    QTest::qWait(100);
+
+    auto* width = window.findChild<QSpinBox*>(QStringLiteral("WidthSpin"));
+    auto* height = window.findChild<QSpinBox*>(QStringLiteral("HeightSpin"));
+    auto* apply = window.findChild<QPushButton*>(QStringLiteral("ApplySizeButton"));
+    QVERIFY(width != nullptr);
+    QVERIFY(height != nullptr);
+    QVERIFY(apply != nullptr);
+
+    width->setValue(1000);
+    height->setValue(1500);
+    apply->click();
+    QTest::qWait(150);
+
+    QCOMPARE(width->value(), 1000);
+    QCOMPARE(height->value(), 1500);
+
+    auto* board = window.findChild<lifegame::view::BoardView*>();
+    QVERIFY(board != nullptr);
+    QImage image = board->renderBoardImage();
+    QVERIFY(!image.isNull());
+    QVERIFY(image.width() <= 4096);
+    QVERIFY(image.height() <= 4096);
+
+    QAction* random = findAction(window, QStringLiteral("随机填充"));
+    QVERIFY(random != nullptr);
+    random->trigger();
+    QTest::qWait(150);
+    image = board->renderBoardImage();
+    QVERIFY(!image.isNull());
+
+    QAction* play = findAction(window, QStringLiteral("开始"));
+    QVERIFY(play != nullptr);
+    play->trigger();
+    QTest::qWait(1200);
+    QVERIFY(play->text().contains(QStringLiteral("暂停")));
+    play->trigger();
+    image = board->renderBoardImage();
+    QVERIFY(!image.isNull());
+    window.grab().save(QStringLiteral("/tmp/lifegame-1000x1500.png"));
     window.close();
 }
 

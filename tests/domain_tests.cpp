@@ -122,10 +122,18 @@ void testGridBasics()
     CHECK(empty.population() == 0);
     CHECK(!empty.cell(0, 0));
 
-    Grid clamped(999, 999);
+    Grid clamped(1001, 1501);
     CHECK(clamped.width() == Grid::kMaxWidth);
     CHECK(clamped.height() == Grid::kMaxHeight);
     CHECK(clamped.cells().size() == static_cast<std::size_t>(Grid::kMaxCells));
+
+    Grid movedFrom(10, 8);
+    Grid moved(std::move(movedFrom));
+    movedFrom.resize(10, 8);
+    movedFrom.setCell(0, 0, true);
+    CHECK(movedFrom.cell(0, 0));
+    CHECK(moved.width() == 10);
+    CHECK(moved.height() == 8);
 
     Grid board(10, 8);
     CHECK(board.width() == 10);
@@ -397,23 +405,23 @@ void testRleDecode()
     CHECK(commentOffset.error.column == 3);
     CHECK(decode("x = 3, y = 3, rule = nonsense\nbo$!").error.code == RleError::InvalidRule);
     CHECK(decode("x = 999999999, y = 3\nbo$!").error.code == RleError::InvalidHeader);
-    CHECK(decode("x = 401, y = 3\nbo$!").error.code == RleError::TooLarge);
+    CHECK(decode("x = 1001, y = 3\nbo$!").error.code == RleError::TooLarge);
 
     // Regression: a crafted column accumulator used to overflow and write
     // outside the row vector. It must be rejected, never crash.
     std::string hostile = "x = 1, y = 1\n";
     for (int i = 0; i < 3000; ++i)
     {
-        hostile += "1000000b";
+        hostile += "2000000b";
     }
     hostile += "o!";
     const auto hostileResult = decode(hostile);
     CHECK(hostileResult.error.code == RleError::RunTooLong);
     CHECK(!hostileResult.document.has_value());
 
-    CHECK(decode("x = 1, y = 1\n1000001b!").error.code == RleError::RunTooLong);
+    CHECK(decode("x = 1, y = 1\n1500001b!").error.code == RleError::RunTooLong);
     CHECK(decode("x = 1, y = 1\n10000001b!").error.code == RleError::RunTooLong);
-    CHECK(decode("x = 1, y = 1\n401b!").error.code == RleError::TooLarge);
+    CHECK(decode("x = 1, y = 1\n1001b!").error.code == RleError::TooLarge);
 
     const auto empty = decode("x = 3, y = 2\n!");
     CHECK(empty.error.code == RleError::None);

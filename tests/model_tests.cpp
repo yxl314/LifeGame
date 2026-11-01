@@ -52,6 +52,7 @@ private slots:
     void loadWhileJumpingIsRejected();
     void snapshotInterval();
     void commandResults();
+    void largeBoard();
 };
 
 void ModelTests::defaults()
@@ -408,7 +409,7 @@ void ModelTests::commandResults()
     QCOMPARE(model.loadDocument(invalidRule), CommandResult::InvalidRule);
 
     lifegame::domain::DecodedDocument tooLarge;
-    tooLarge.pattern = lifegame::domain::Pattern::fromAscii("wide", {std::string(401, 'O')});
+    tooLarge.pattern = lifegame::domain::Pattern::fromAscii("wide", {std::string(1001, 'O')});
     QCOMPARE(model.loadDocument(tooLarge), CommandResult::TooLarge);
 
     QCOMPARE(model.clear(), CommandResult::Success);
@@ -427,6 +428,28 @@ void ModelTests::commandResults()
     QCOMPARE(model.clear(), CommandResult::Busy);
     model.cancelJump();
     QTRY_VERIFY(!model.isJumping());
+}
+
+void ModelTests::largeBoard()
+{
+    lifegame::model::LifeModel model;
+    QCOMPARE(model.resizeBoard(1000, 1500), lifegame::model::CommandResult::Success);
+    QCOMPARE(model.width(), 1000);
+    QCOMPARE(model.height(), 1500);
+
+    QCOMPARE(model.randomize(30), lifegame::model::CommandResult::Success);
+    QVERIFY(model.stats().population > 0);
+    QCOMPARE(model.step(), lifegame::model::CommandResult::Success);
+    QCOMPARE(model.stats().generation, 1);
+
+    const std::string encoded = model.toRle("large-board");
+    const auto decoded = lifegame::domain::decodeRle(encoded);
+    QVERIFY(decoded.document.has_value());
+    if (decoded.document)
+    {
+        QCOMPARE(decoded.document->pattern.width, 1000);
+        QCOMPARE(decoded.document->pattern.height, 1500);
+    }
 }
 
 QTEST_GUILESS_MAIN(ModelTests)

@@ -13,7 +13,8 @@ namespace lifegame::domain
 namespace
 {
 
-constexpr int kMaxExtent = kMaxBoardExtent;
+constexpr int kMaxWidth = kMaxBoardWidth;
+constexpr int kMaxHeight = kMaxBoardHeight;
 
 std::string_view trim(std::string_view text)
 {
@@ -284,11 +285,11 @@ RleDecodeResult decodeRle(std::string_view text)
         return {std::nullopt, makeError(RleError::EmptyBody, text, 0)};
     }
 
-    if (header.hasWidth && header.width > kMaxExtent)
+    if (header.hasWidth && header.width > kMaxWidth)
     {
         return {std::nullopt, makeError(RleError::TooLarge, text, 0)};
     }
-    if (header.hasHeight && header.height > kMaxExtent)
+    if (header.hasHeight && header.height > kMaxHeight)
     {
         return {std::nullopt, makeError(RleError::TooLarge, text, 0)};
     }
@@ -306,7 +307,7 @@ RleDecodeResult decodeRle(std::string_view text)
         if (ch >= '0' && ch <= '9')
         {
             run = run * 10 + (ch - '0');
-            if (run > static_cast<std::int64_t>(kMaxExtent) * kMaxExtent)
+            if (run > static_cast<std::int64_t>(kMaxWidth) * kMaxHeight)
             {
                 return {std::nullopt, makeError(RleError::RunTooLong, text, sourceOffsetForBody(bodyLines, i))};
             }
@@ -325,7 +326,7 @@ RleDecodeResult decodeRle(std::string_view text)
         {
         case 'b':
         case 'B':
-            if (col + count > kMaxExtent)
+            if (col + count > kMaxWidth)
             {
                 return {std::nullopt, makeError(RleError::TooLarge, text, sourceOffsetForBody(bodyLines, i))};
             }
@@ -336,7 +337,7 @@ RleDecodeResult decodeRle(std::string_view text)
         case 'o':
         case 'O':
         {
-            if (row >= kMaxExtent || col + count > kMaxExtent)
+            if (row >= kMaxHeight || col + count > kMaxWidth)
             {
                 return {std::nullopt, makeError(RleError::TooLarge, text, sourceOffsetForBody(bodyLines, i))};
             }
@@ -361,7 +362,7 @@ RleDecodeResult decodeRle(std::string_view text)
         case '$':
             row += count;
             col = 0;
-            if (row >= kMaxExtent)
+            if (row >= kMaxHeight)
             {
                 return {std::nullopt, makeError(RleError::TooLarge, text, sourceOffsetForBody(bodyLines, i))};
             }
@@ -392,7 +393,7 @@ RleDecodeResult decodeRle(std::string_view text)
     const int width = std::max(header.hasWidth ? header.width : 0, contentWidth);
     const int height = std::max(header.hasHeight ? header.height : 0, contentHeight);
 
-    if (width > kMaxExtent || height > kMaxExtent)
+    if (width > kMaxWidth || height > kMaxHeight)
     {
         return {std::nullopt, makeError(RleError::TooLarge, text, 0)};
     }

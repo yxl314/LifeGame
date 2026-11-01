@@ -140,8 +140,8 @@ void SimulationEngine::discardPending()
 
 domain::Grid SimulationEngine::takeResult()
 {
-    // Grid is a fixed std::array; this is a copy, not a pointer move.
-    return m_output;
+    // Grid owns a heap vector; move it instead of copying the active cells.
+    return std::move(m_output);
 }
 
 void SimulationEngine::onFinished()

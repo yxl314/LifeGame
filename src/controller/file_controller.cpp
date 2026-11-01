@@ -56,7 +56,9 @@ QString FileController::rleErrorMessage(const domain::RleErrorInfo& error) const
     case domain::RleError::RunTooLong:
         return tr("RLE 游程长度异常。");
     case domain::RleError::TooLarge:
-        return tr("图案尺寸超出棋盘上限（%1 × %1）。").arg(domain::kMaxBoardExtent);
+        return tr("图案尺寸超出棋盘上限（%1 × %2）。")
+            .arg(domain::kMaxBoardWidth)
+            .arg(domain::kMaxBoardHeight);
     case domain::RleError::InvalidRule:
         return tr("RLE 头部规则记号无效。");
     case domain::RleError::MissingTerminator:

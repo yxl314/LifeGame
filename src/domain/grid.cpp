@@ -8,6 +8,8 @@
 namespace lifegame::domain
 {
 
+Grid::Grid() = default;
+
 Grid::Grid(int width, int height)
 {
     resize(width, height);
@@ -17,19 +19,28 @@ void Grid::resize(int width, int height)
 {
     const int newWidth = std::clamp(width, 0, kMaxWidth);
     const int newHeight = std::clamp(height, 0, kMaxHeight);
-    if (newWidth == m_width && newHeight == m_height)
+    const std::size_t expected =
+        static_cast<std::size_t>(newWidth) * static_cast<std::size_t>(newHeight);
+    if (newWidth == m_width && newHeight == m_height && m_cells.size() == expected)
     {
         return;
     }
 
     m_width = newWidth;
     m_height = newHeight;
-    m_cells.fill(kDead);
+    if (m_cells.size() != expected)
+    {
+        m_cells.assign(expected, kDead);
+    }
+    else
+    {
+        std::fill(m_cells.begin(), m_cells.end(), kDead);
+    }
 }
 
 void Grid::clear()
 {
-    m_cells.fill(kDead);
+    std::fill(m_cells.begin(), m_cells.end(), kDead);
 }
 
 bool Grid::inBounds(int row, int col) const
@@ -43,8 +54,9 @@ bool Grid::cell(int row, int col) const
     {
         return false;
     }
-    return m_cells[static_cast<std::size_t>(row) * static_cast<std::size_t>(m_width) +
-                   static_cast<std::size_t>(col)] != kDead;
+    const std::size_t index = static_cast<std::size_t>(row) * static_cast<std::size_t>(m_width) +
+                              static_cast<std::size_t>(col);
+    return index < m_cells.size() && m_cells[index] != kDead;
 }
 
 void Grid::setCell(int row, int col, bool alive)
@@ -53,8 +65,12 @@ void Grid::setCell(int row, int col, bool alive)
     {
         return;
     }
-    m_cells[static_cast<std::size_t>(row) * static_cast<std::size_t>(m_width) +
-            static_cast<std::size_t>(col)] = alive ? kAlive : kDead;
+    const std::size_t index = static_cast<std::size_t>(row) * static_cast<std::size_t>(m_width) +
+                              static_cast<std::size_t>(col);
+    if (index < m_cells.size())
+    {
+        m_cells[index] = alive ? kAlive : kDead;
+    }
 }
 
 bool Grid::toggleCell(int row, int col)
@@ -64,17 +80,23 @@ bool Grid::toggleCell(int row, int col)
         return false;
     }
 
-    Cell& value = m_cells[static_cast<std::size_t>(row) * static_cast<std::size_t>(m_width) +
-                         static_cast<std::size_t>(col)];
+    const std::size_t index = static_cast<std::size_t>(row) * static_cast<std::size_t>(m_width) +
+                              static_cast<std::size_t>(col);
+    if (index >= m_cells.size())
+    {
+        return false;
+    }
+    Cell& value = m_cells[index];
     value = value != kDead ? kDead : kAlive;
     return value != kDead;
 }
 
 int Grid::population() const
 {
-    const int count = m_width * m_height;
+    const std::size_t count = std::min<std::size_t>(
+        m_cells.size(), static_cast<std::size_t>(m_width) * static_cast<std::size_t>(m_height));
     int alive = 0;
-    for (int i = 0; i < count; ++i)
+    for (std::size_t i = 0; i < count; ++i)
     {
         alive += m_cells[static_cast<std::size_t>(i)] != kDead ? 1 : 0;
     }
@@ -83,7 +105,8 @@ int Grid::population() const
 
 int Grid::neighbourCount(int row, int col, Boundary boundary) const
 {
-    if (!inBounds(row, col) || m_width == 0 || m_height == 0)
+    if (!inBounds(row, col) || m_width == 0 || m_height == 0 ||
+        m_cells.size() != static_cast<std::size_t>(m_width) * static_cast<std::size_t>(m_height))
     {
         return 0;
     }
@@ -128,7 +151,7 @@ void Grid::advance(const Rule& rule, Boundary boundary)
 
     Grid next;
     computeNext(*this, &next, rule, boundary);
-    *this = next; // fixed std::array: explicit copy
+    *this = std::move(next);
 }
 
 void Grid::randomize(int densityPercent, std::uint32_t seed)
@@ -137,16 +160,18 @@ void Grid::randomize(int densityPercent, std::uint32_t seed)
     std::mt19937 engine(seed);
     std::uniform_int_distribution<int> distribution(1, 100);
 
-    const int count = m_width * m_height;
-    for (int i = 0; i < count; ++i)
+    const std::size_t count = std::min<std::size_t>(
+        m_cells.size(), static_cast<std::size_t>(m_width) * static_cast<std::size_t>(m_height));
+    for (std::size_t i = 0; i < count; ++i)
     {
-        m_cells[static_cast<std::size_t>(i)] = distribution(engine) <= density ? kAlive : kDead;
+        m_cells[i] = distribution(engine) <= density ? kAlive : kDead;
     }
 }
 
 bool Grid::equals(const Grid& other) const
 {
-    if (m_width != other.m_width || m_height != other.m_height)
+    if (m_width != other.m_width || m_height != other.m_height ||
+        m_cells.size() != other.m_cells.size())
     {
         return false;
     }
@@ -190,7 +215,9 @@ void Grid::computeRows(const Grid& current,
 
     const int width = current.width();
     const int height = current.height();
-    if (width <= 0 || height <= 0 || next->width() != width || next->height() != height)
+    if (width <= 0 || height <= 0 || next->width() != width || next->height() != height ||
+        current.m_cells.size() != static_cast<std::size_t>(width) * static_cast<std::size_t>(height) ||
+        next->m_cells.size() != current.m_cells.size())
     {
         return;
     }

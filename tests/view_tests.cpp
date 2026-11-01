@@ -47,6 +47,7 @@ private slots:
     void catalogs();
     void settingsDialogRoundTrip();
     void progressDialogProgrammaticCloseDoesNotCancel();
+    void largeBoardRendersAndExports();
 };
 
 void ViewTests::speedScale()
@@ -180,6 +181,27 @@ void ViewTests::progressDialogProgrammaticCloseDoesNotCancel()
     // Simulates JumpController::closeProgress() during shutdown/finish.
     dialog.close();
     QVERIFY(!cancelled);
+}
+
+void ViewTests::largeBoardRendersAndExports()
+{
+    lifegame::domain::Grid grid(1000, 1500);
+    grid.setCell(0, 0, true);
+    grid.setCell(999, 1499, true);
+    grid.setCell(500, 750, true);
+
+    lifegame::view::BoardView view;
+    view.resize(1180, 820);
+    view.setBoard(&grid);
+    view.setPopulation(grid.population());
+    view.refresh();
+
+    const QImage image = view.renderBoardImage();
+    QVERIFY(!image.isNull());
+    QVERIFY(image.width() > 0);
+    QVERIFY(image.height() > 0);
+    QVERIFY(image.width() <= 4096);
+    QVERIFY(image.height() <= 4096);
 }
 
 QTEST_MAIN(ViewTests)

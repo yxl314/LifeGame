@@ -344,8 +344,8 @@ CommandResult LifeModel::resizeBoard(int width, int height)
         return CommandResult::Busy;
     }
 
-    const int clampedWidth = std::clamp(width, domain::kMinBoardExtent, domain::kMaxBoardExtent);
-    const int clampedHeight = std::clamp(height, domain::kMinBoardExtent, domain::kMaxBoardExtent);
+    const int clampedWidth = std::clamp(width, domain::kMinBoardExtent, domain::kMaxBoardWidth);
+    const int clampedHeight = std::clamp(height, domain::kMinBoardExtent, domain::kMaxBoardHeight);
     const bool adjusted = clampedWidth != width || clampedHeight != height;
 
     std::unique_ptr<domain::Grid> board(new (std::nothrow) domain::Grid(clampedWidth, clampedHeight));
@@ -480,7 +480,7 @@ CommandResult LifeModel::loadDocument(const domain::DecodedDocument& document)
                            << "height=" << pattern.height;
         return CommandResult::InvalidPattern;
     }
-    if (pattern.width > domain::kMaxBoardExtent || pattern.height > domain::kMaxBoardExtent)
+    if (pattern.width > domain::kMaxBoardWidth || pattern.height > domain::kMaxBoardHeight)
     {
         qCWarning(lcModel) << "document rejected reason=too_large width=" << pattern.width
                            << "height=" << pattern.height;
@@ -613,7 +613,7 @@ void LifeModel::onStepFailed(CommandResult reason)
 void LifeModel::applyStep(domain::Grid&& next)
 {
     const bool unchanged = next.equals(m_board);
-    m_board = next; // fixed std::array: explicit copy
+    m_board = std::move(next);
     ++m_generation;
     m_population = m_board.population();
     recordSnapshot();

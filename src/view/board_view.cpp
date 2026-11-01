@@ -23,6 +23,7 @@ constexpr double kMargin = 24.0;
 constexpr double kMinCellPixels = 1.0;
 constexpr double kMaxCellPixels = 48.0;
 constexpr double kCellImageThreshold = 6.0;
+constexpr int kDetailedCellLimit = 250000;
 constexpr double kGridCacheMaxPixels = 4.0 * 1024.0 * 1024.0;
 constexpr int kExportCellPixels = 8;
 constexpr int kExportMaxDimension = 4096;
@@ -273,7 +274,8 @@ void BoardView::drawBoard(QPainter& painter,
     const double gap = cellPixelsValue >= 7.0 ? 1.0 : (cellPixelsValue >= 4.0 ? 0.5 : 0.0);
     const double radius = std::min(2.5, cellPixelsValue * 0.2);
 
-    if ((m_animating && interactive) || cellPixelsValue < kCellImageThreshold)
+    const bool tooManyCells = width * height > kDetailedCellLimit;
+    if ((m_animating && interactive) || cellPixelsValue < kCellImageThreshold || tooManyCells)
     {
         drawCellsAsImage(painter, board, boardRect, interactive);
     }
@@ -332,6 +334,14 @@ void BoardView::drawBoard(QPainter& painter,
             drawGridLines(painter, boardRect, cellPixelsValue);
         }
     }
+    else if (m_grid_visible && cellPixelsValue > 0.0)
+    {
+        // At large boards the per-cell grid would be sub-pixel and invisible.
+        // Draw a coarse grid every N cells instead of pretending the toggle
+        // did nothing.
+        const int stride = std::max(1, static_cast<int>(std::ceil(3.0 / cellPixelsValue)));
+        drawGridLines(painter, boardRect, cellPixelsValue, stride);
+    }
 
     if (interactive && m_hover_row >= 0 && m_hover_col >= 0)
     {
@@ -352,19 +362,23 @@ void BoardView::drawBoard(QPainter& painter,
     painter.drawRect(boardRect.adjusted(-0.5, -0.5, 0.5, 0.5));
 }
 
-void BoardView::drawGridLines(QPainter& painter, const QRectF& boardRect, double cellPixelsValue) const
+void BoardView::drawGridLines(QPainter& painter,
+                              const QRectF& boardRect,
+                              double cellPixelsValue,
+                              int stride) const
 {
     painter.setPen(QPen(kGrid, 1.0));
     painter.setBrush(Qt::NoBrush);
 
     const int width = boardWidth();
     const int height = boardHeight();
-    for (int col = 0; col <= width; ++col)
+    const int step = std::max(1, stride);
+    for (int col = 0; col <= width; col += step)
     {
         const double x = boardRect.left() + static_cast<double>(col) * cellPixelsValue;
         painter.drawLine(QPointF(x, boardRect.top()), QPointF(x, boardRect.bottom()));
     }
-    for (int row = 0; row <= height; ++row)
+    for (int row = 0; row <= height; row += step)
     {
         const double y = boardRect.top() + static_cast<double>(row) * cellPixelsValue;
         painter.drawLine(QPointF(boardRect.left(), y), QPointF(boardRect.right(), y));
@@ -538,7 +552,7 @@ QImage BoardView::renderBoardImage() const
     const int height = boardHeight();
 
     // Export resolution is independent of the 1..48 px/zoom level: an export
-    // at 48 px/cell on a 400x400 board would need ~1.4 GiB.
+    // at 48 px/cell on a large board would need many GiB.
     int pixels = kExportCellPixels;
     while (pixels > 1 &&
            (width * pixels + 2 * kExportMargin > kExportMaxDimension ||

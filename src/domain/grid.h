@@ -1,8 +1,8 @@
 #pragma once
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 #include "domain/board_limits.h"
 #include "domain/boundary.h"
@@ -13,29 +13,30 @@ namespace lifegame::domain
 {
 
 /**
- * Fixed-capacity board backed by one contiguous std::array.
+ * Heap-backed board with one contiguous active-cell vector.
  *
- * The first width() * height() cells are active; the remaining storage is
- * always zero. A fixed capacity avoids allocation during simulation and lets
- * the parallel row slicer write into disjoint regions without locks.
+ * Storage is sized to the active width() * height() area only, so a small
+ * board does not pay for a 1.5M-cell buffer. The vector is reused by the step
+ * pipeline when dimensions are unchanged, and the Grid object itself stays
+ * small enough to live on the stack. This is important for 1000x1500 boards.
  */
 class Grid
 {
 public:
-    static constexpr int kMaxWidth = kMaxBoardExtent;
-    static constexpr int kMaxHeight = kMaxBoardExtent;
+    static constexpr int kMaxWidth = kMaxBoardWidth;
+    static constexpr int kMaxHeight = kMaxBoardHeight;
     static constexpr int kMaxCells = kMaxWidth * kMaxHeight;
 
-    Grid() = default;
+    Grid();
     explicit Grid(int width, int height);
 
     /**
      * Resize the active area.
      *
-     * When the dimensions change the whole backing array is cleared, so the
-     * unused region stays zero. When the dimensions are unchanged this is a
-     * no-op: callers that overwrite every active cell (the step pipeline) avoid
-     * a 160 KB memset per generation.
+     * When dimensions change the storage is sized to the new active area and
+     * cleared. When dimensions and storage are unchanged this is a no-op:
+     * callers that overwrite every active cell (the step pipeline) avoid a
+     * large memset per generation.
      */
     void resize(int width, int height);
 
@@ -69,7 +70,7 @@ public:
 
     bool equals(const Grid& other) const;
 
-    const std::array<Cell, kMaxCells>& cells() const
+    const std::vector<Cell>& cells() const
     {
         return m_cells;
     }
@@ -104,7 +105,7 @@ public:
 private:
     int m_width = 0;
     int m_height = 0;
-    std::array<Cell, kMaxCells> m_cells{};
+    std::vector<Cell> m_cells;
 };
 
 } // namespace lifegame::domain
