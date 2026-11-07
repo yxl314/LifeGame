@@ -1,13 +1,13 @@
 # 标准分层 MVC 独立审计
 
-本审计不使用 `docs/architecture.md` 作为证据，而是直接检查源码 include、CMake target graph、
+本审计不使用 `docs/architecture.md` 作为证据，而是直接检查源码 include、`life_game.pri` 的模块清单、
 测试依赖和运行行为。采用的验收基准是**分层 MVC + 被动视图**：
 
 - View 不知道 Model，不 include `model/`，不连接 Model 信号；
 - Controller 是唯一同时持有可写 Model 与 View 的层（App 组合根除外）；
 - Model/Service/View 只依赖 Domain/Shared，不互相依赖；
 - Domain/Shared 不依赖 Qt，Model 不依赖 UI/文件/设置；
-- CMake 链接方向与 include 方向一致；
+- 模块清单的依赖方向与 include 方向一致；
 - 有负向测试证明门禁会拒绝绕过。
 
 ## 审计结果
@@ -78,10 +78,10 @@ src/app → controller
 ## 复核命令
 
 ```bash
-cmake --build --preset debug --parallel 8
+./tests/run_all.sh
 ctest --preset debug
 python3 tools/check_layering.py .
 python3 tools/layering_selftest.py
 ```
 
-当前结果：8/8 CTest 通过；门禁 85 个文件通过；负向 fixture 全部按预期失败。
+当前结果：8/8 用例通过；门禁 85 个文件通过；负向 fixture 全部按预期失败。

@@ -1,7 +1,7 @@
 # 架构说明：标准分层 MVC（被动视图）
 
 本文档按**外部可验证的架构规则**描述 life-game，而不是反过来用代码给文档找理由。
-验收标准是：依赖图、CMake 目标、include 约束和测试行为共同成立；文档只是解释。
+验收标准是：依赖图、工程模块、include 约束和测试行为共同成立；文档只是解释。
 
 ## 1. 采用的 MVC 变体
 
@@ -43,21 +43,25 @@ MVC 有多个合法变体。本项目明确采用**分层 MVC + 被动视图（P
 | Controller | `src/controller` | Domain、Shared、Model、Service、View | App | 输入编排、Model→View 推送、错误文案、会话协调 |
 | App | `src/app` | 全部 | — | `main()`、组合根、菜单/工具栏/状态栏装配 |
 
-**CMake 目标必须与上表一致**：
+**`life_game.pri` 里的模块清单必须与上表一致**：
 
 ```
-lifegame_domain      → 无业务目标依赖
-lifegame_shared      → header-only 契约，无业务目标依赖
-lifegame_model       → lifegame_domain + lifegame_shared + Qt5::Core + Qt5::Concurrent
-lifegame_service     → lifegame_domain + lifegame_shared + Qt5::Core + Qt5::Gui
-lifegame_view        → lifegame_domain + lifegame_shared + Qt5::Widgets
-lifegame_controller  → lifegame_model + lifegame_service + lifegame_view + lifegame_shared + Qt5::Widgets
-lifegame_app         → lifegame_controller
-lifegame             → lifegame_app
+LIFEGAME_DOMAIN_*      → 无业务依赖
+LIFEGAME_SHARED_*      → header-only 契约，无业务依赖
+LIFEGAME_MODEL_*       → Domain + Shared（QT += core concurrent）
+LIFEGAME_SERVICE_*     → Domain + Shared（QT += core gui）
+LIFEGAME_VIEW_*        → Domain + Shared（QT += widgets），含 resources.qrc
+LIFEGAME_CONTROLLER_*  → Model + Service + View + Shared（QT += widgets）
+LIFEGAME_APP_*         → Controller
+LIFEGAME_MAIN_SOURCES  → 只有主程序用
 ```
+
+每个 `.pro` 只把**自己需要的**那几组 `*_SOURCES`/`*_HEADERS` 加进来：主程序全要，
+测试按覆盖范围取子集。这样"依赖方向"在构建文件上也看得见——某个测试多加了 Model
+的文件，评审时一眼就能发现。
 
 `tools/check_layering.py` 会拒绝 View/Service 对 `model/` 的 include，也会检查
-`src/`/`..` 绕过、Domain/Model 的 Qt/中文污染、源文件是否列入 CMake、以及
+`src/`/`..` 绕过、Domain/Model 的 Qt/中文污染、源文件是否列入 `life_game.pri`、以及
 `target_link_libraries` 的方向。`layering_selftest` 用负向 fixture 证明门禁会失败，而不是
 只会在正确代码上打印 OK。
 
@@ -239,19 +243,19 @@ FileController::openRle()
 | `controller_tests` | Model→View 推送、面板信号、绘制/图案、定时器、跳转、文件/设置、会话 |
 | `ui_tests` | 完整 MainWindow、确认/取消、Space 焦点、网格同步、截图 |
 | `logging_tests` | 文件 sink、category、verbose debug、轮转 |
-| `layering` | include 方向、View/Service↔Model 隔离、CJK/Qt 纯净度、CMake 清单/链接 |
+| `layering` | include 方向、View/Service↔Model 隔离、CJK/Qt 纯净度、`life_game.pri` 清单 |
 | `layering_selftest` | 门禁的负向 fixture |
 
-`view_tests` 的 CMake 目标只链接 `lifegame_view`/`lifegame_domain`；它使用
+`view_tests` 的 `.pro` 只加入 View 与 Domain 的源码；它使用
 `domain::Grid` 直接构造棋盘，不链接 Model，证明 View 可以脱离 Model 测试。
 
 ### 门禁
 
 - `tools/check_layering.py`：include 方向、`src/`/`..`、View/Service 的 Model 隔离、
-  Domain/Model 的 Qt/中文、CMake 源文件清单与 target 链接方向。
+  Domain/Model 的 Qt/中文、`life_game.pri` 的源文件清单是否完整。
 - `tools/layering_selftest.py`：对每个绕过/隔离规则构造负向 fixture。
-- CMake 目标按层拆分；`lifegame_view`/`lifegame_service` 只链接 `lifegame_domain`。
-- 新增文件必须放入正确层目录并显式加入 `CMakeLists.txt`（禁止 glob）。
+- 模块清单按层拆分；`view`/`service` 只依赖 `domain`（+ `shared`）。
+- 新增文件必须放入正确层目录并显式加入 `life_game.pri`（禁止 glob）。
 
 ## 8. 评审清单（按标准 MVC 验收）
 
@@ -264,7 +268,7 @@ FileController::openRle()
 - [ ] Domain 是否仍然不包含任何 Qt 头文件/中文文案？应为是。
 - [ ] 用户输入是否只经 Controller 变成 Model 命令？应为是。
 - [ ] Model 变化是否只经 Controller 推送到 View？应为是。
-- [ ] CMake 目标链接是否与依赖表一致？`lifegame_view`/`lifegame_service` 是否只链接 Domain + Shared？
+- [ ] `life_game.pri` 的模块清单是否与依赖表一致？`view`/`service` 是否只依赖 Domain + Shared？
 - [ ] 新增状态变化是否有对应测试，尤其是 Model→View 推送和 View→Model 命令？
 - [ ] 可恢复错误是否返回错误码，而不是异常/静默 bool？
 - [ ] 是否只在低频、可行动路径记录日志，且没有逐代/逐格/正文日志？

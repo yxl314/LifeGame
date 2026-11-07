@@ -37,8 +37,12 @@ def write_tree(files: dict[str, str]) -> Path:
         path.write_text(content, encoding="utf-8")
         if rel.startswith("src/"):
             source_paths.append(rel)
-    (root / "CMakeLists.txt").write_text(
-        "project(selftest)\n" + "\n".join(source_paths) + "\n", encoding="utf-8"
+    # 清单的唯一事实源是 life_game.pri（构建已从 CMake 换成 qmake）
+    (root / "life_game.pri").write_text(
+        "LIFEGAME_SELFTEST_SOURCES = \\\n"
+        + " \\\n".join("    " + rel for rel in source_paths)
+        + "\n",
+        encoding="utf-8",
     )
     return root
 

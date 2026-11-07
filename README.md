@@ -9,7 +9,7 @@
 - **Controller** 是唯一同时持有 Model 与 View 的协调层，负责“查询 Model → 更新 View”
   和“View 意图 → Model 命令”的双向转换。
 
-它同时是一个**可执行的架构范例**：依赖方向由分层 CMake 目标和
+它同时是一个**可执行的架构范例**：依赖方向由分层工程结构与
 `tools/check_layering.py` 共同约束。Domain/Shared 层不依赖 Qt；Model/Service/View
 互不依赖，三者都只依赖 Domain + Shared 契约；Controller 依赖三者；App 只做组合。
 
@@ -27,8 +27,8 @@
 - **Controller 是唯一中介**：输入从 View 信号进入 Controller，状态从 Model 信号
   经 Controller 推送回 View；没有 View→Model 的隐式观察链。
 - **Domain 零框架依赖**：`src/domain` 不包含任何 Qt 头文件，可用普通 `g++` 单独编译测试。
-- **可执行的架构门禁**：`tools/check_layering.py` 在 CTest 与 CI 中检查层间 include；
-  CMake 目标本身也按层拆分。
+- **可执行的架构门禁**：`tools/check_layering.py` 在测试与 CI 中检查层间 include；
+  `tools/check_layering.py` 逐条核对。
 - **并发与状态机可测试**：单代异步演化封装在 `SimulationEngine`；跳转重放在
   `LifeModel` 的后台任务中完成；快照历史使用 1 bit/cell 压缩；Model/View/Controller 各有 QtTest 覆盖。
 - **错误码而非异常**：应用代码以 `-fno-exceptions` 编译；可恢复失败使用
@@ -36,7 +36,7 @@
   `domain::RleError` 等类型化错误码，Controller 负责映射成一条可操作的中文提示。
 - **可运维日志**：五个 `QLoggingCategory`（app/model/io/controller/view）写入
   轮转文件，默认只记 Info/Warning/Critical，`--verbose` 才打开 debug；不会逐代/逐格刷日志。
-- **工程化齐全**：CMake presets、CTest（8 个用例）、ASan/UBSan 选项、GitHub Actions、
+- **工程化齐全**：qmake 工程、8 个用例（6 个 QTest + 2 个分层检查）、ASan/UBSan 选项、
   `.clang-format`、README 与架构文档。
 
 ## 功能
@@ -172,8 +172,8 @@ Controller **不**复制整块棋盘；它把 `const domain::Grid*` 交给 View�
 ### 目录
 
 ```
-CMakeLists.txt                分层 CMake 目标
-CMakePresets.json             debug / release / asan 预设
+life_game.pro                 主程序
+life_game.pri                 模块源文件清单与编译选项（各 .pro 共用）
 docs/architecture.md          架构契约与评审清单
 docs/performance.md           数据结构与并发性能报告
 src/domain/                   纯业务 C++，无 Qt（含 1 bit/cell 快照 PackedGrid）
@@ -184,7 +184,7 @@ src/view/                     自绘棋盘、面板、对话框、确认/提示�
 src/controller/               输入、Presenter、会话/设置、错误文案映射
 src/app/                      组合根、日志 sink、main
 tests/                        domain / model / view / controller / ui / logging
-tools/check_layering.py       层间 include / 纯净度 / CMake 门禁
+tools/check_layering.py       层间 include / 纯净度门禁
 tools/layering_selftest.py    门禁负向 fixture
 ```
 
@@ -203,78 +203,74 @@ tools/layering_selftest.py    门禁负向 fixture
 
 ## 构建
 
-需要 CMake ≥ 3.16、Ninja/Make、C++17 编译器与 Qt 5.9+（Widgets、Concurrent）；
-测试与架构门禁还需要 Python 3。使用 `CMakePresets.json` 时需要 CMake ≥ 3.21。
-默认开启 `LIFEGAME_NO_EXCEPTIONS=ON`（GCC/Clang 的 `-fno-exceptions`）：
+用 **qmake**，需要 Qt 6（`qmake6`）、C++17 编译器；测试与架构门禁还需要 Python 3。
+
+主程序与每个测试都是**独立工程**：各自 `qmake` + `make`，不依赖先构建库，也不用
+先编主程序。公共的源文件清单与编译选项在 `life_game.pri`，由各 `.pro` include。
 
 ```bash
-sudo apt-get install -y cmake ninja-build g++ python3 qtbase5-dev
+# 主程序
+mkdir -p build/app && cd build/app
+qmake6 ../../life_game.pro && make -j"$(nproc)"
+cd ../.. && ./build/app/lifegame
 
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build --parallel 8
-./build/lifegame
+# 全部测试（各自构建、各自运行，最后跑两个分层检查）
+./tests/run_all.sh
+
+# 只跑一个
+./tests/run_all.sh domain
 ```
 
-如果系统同时安装了 Qt 6，CMake 可能优先找到 Qt 6；请显式指定 Qt 5：
+单个测试也可以完全独立地构建：
 
 ```bash
-cmake -S . -B build -G Ninja \
-  -DCMAKE_PREFIX_PATH=/usr/lib/aarch64-linux-gnu/cmake \
-  -DCMAKE_BUILD_TYPE=Release
+mkdir -p build/tests/view && cd build/tests/view
+qmake6 /路径/life_game/tests/view_tests.pro && make -j"$(nproc)"
+QT_QPA_PLATFORM=offscreen ./bin/view_tests
 ```
 
-或者使用预设：
+界面相关用例（`view_tests` / `controller_tests` / `ui_tests`）需要离屏平台插件，
+`tests/run_all.sh` 会统一导出 `QT_QPA_PLATFORM=offscreen`；单独跑时自己带上。
+
+### 一处环境限制：仓库路径含非 ASCII 字符
+
+qmake 会把源码目录的**绝对路径**写进 Makefile 的若干规则里，`make` 执行这些规则
+时对非 ASCII 路径处理不当（例如仓库在 `~/桌面/...` 下，路径会变成 `??`）。表现为
+一条 `cd: can't cd to ...` 警告，构建通常仍能完成，但如果目标产物写在仓库内就会失败。
+
+规避办法是经典的 shadow build —— 把构建目录放到纯 ASCII 路径下：
 
 ```bash
-cmake --preset debug
-cmake --build --preset debug   # CMakePresets 中 jobs=8
-ctest --preset debug
+mkdir -p /tmp/lifegame-build && cd /tmp/lifegame-build
+qmake6 /path/to/life_game/life_game.pro && make -j"$(nproc)"
 ```
 
-所有 build preset（`debug`/`release`/`asan`）都设置了 `"jobs": 8`，因此
-`cmake --build --preset <name>` 默认 8 路并行；非预设命令请使用
-`cmake --build build --parallel 8`。CI 也固定 `--parallel 8`。
+`tests/run_all.sh` 把产物放在仓库内的 `build/tests/` 下（能正常工作），若在非 ASCII
+路径的仓库里遇到异常，改用上面的方式即可。
 
-Qt Creator 可直接打开根目录的 `CMakeLists.txt`。本项目不再维护 qmake 工程。
+### 为什么是 Qt 6
 
-### Doxygen 文档
+代码用了 C++17 的 `std::optional` / `std::string_view`，以及 Qt 5.7 才引入的
+`QOverload`。系统 Qt 5 是 5.6.3，两者都不满足，所以这一份挂 Qt 6。
 
-公共头文件使用标准 Doxygen 注释（`@file`、`@brief`、`@param`、`@return`、
-`@note`）。需要 Doxygen 1.9+：
+### 编译选项
+
+`life_game.pri` 里统一设：`-Wall -Wextra -Wpedantic` 与 `-fno-exceptions`
+（与原来的 `LIFEGAME_NO_EXCEPTIONS=ON` 一致）。要开 ASan/UBSan 时在命令行上加：
 
 ```bash
-doxygen Doxyfile
-# 或
-cmake --build --preset debug --target docs
+qmake6 ../../life_game.pro "QMAKE_CXXFLAGS+=-fsanitize=address,undefined" \
+       "QMAKE_LFLAGS+=-fsanitize=address,undefined"
 ```
-
-输出在 `docs/doxygen/html/index.html`（已加入 `.gitignore`）。
-当前 `doxygen Doxyfile` 为 **0 warnings**。
-
-### 命令行与日志
-
-```bash
-./build/lifegame --help
-./build/lifegame --verbose                 # 打开 lifegame.* 的 debug 日志
-./build/lifegame --log-file /tmp/life.log  # 覆盖日志路径
-```
-
-默认日志位于 `QStandardPaths::AppLocalDataLocation/logs/life-game.log`
-（Linux 通常为 `~/.local/share/life-game/life-game/logs/life-game.log`），
-单文件 2 MiB × 3 份轮转。日志只记录低频状态迁移、文件/设置失败、模拟与跳转生命周期；
-不会打印棋盘/RLE 正文、窗口几何或每代状态。`QT_LOGGING_RULES` 仍可覆盖默认过滤规则。
 
 ## 测试
 
 ```bash
-cmake -S . -B build -G Ninja \
-  -DCMAKE_BUILD_TYPE=Debug \
-  -DLIFEGAME_WARNINGS_AS_ERRORS=ON
-cmake --build build --parallel 8
-ctest --test-dir build --output-on-failure
+./tests/run_all.sh
 ```
 
-八个 CTest 用例：
+每个测试是**独立工程**（各自的 `.pro`），脚本逐个 `qmake6` + `make` 并运行，最后
+跑两个分层检查。八个用例：
 
 | 用例 | 依赖 | 覆盖 |
 |---|---|---|
@@ -284,22 +280,23 @@ ctest --test-dir build --output-on-failure
 | `controller_tests` | QtWidgets | Bresenham、面板信号、绘制/图案、定时器、跳转方向/进度、Model→View 推送、文件路径、设置错误、会话恢复 |
 | `ui_tests` | QtWidgets | 完整 MainWindow、确认/取消、Space、网格、1500×1000 渲染/模拟、截图 |
 | `logging_tests` | QtCore | 文件 sink、category、verbose debug、轮转 |
-| `layering` | Python | include 方向、绕过、CJK、CMake 清单与目标链接 |
+| `layering` | Python | include 方向、绕过、CJK、源码清单完整性 |
 | `layering_selftest` | Python | 架构门禁自身的负向 fixture |
 
-UI 测试输出 `/tmp/lifegame-ui-tests.png`。CTest 为 UI 用例设置
-`QT_QPA_PLATFORM=offscreen`，无需 Xvfb（CI 也可以直接用 xvfb-run）。
+UI 测试输出 `/tmp/lifegame-ui-tests.png`。界面用例需要离屏平台插件：
+`tests/run_all.sh` 统一导出 `QT_QPA_PLATFORM=offscreen`，无需 Xvfb。
 
 ### 质量门禁
 
-- 编译开启 `-Wall -Wextra -Wpedantic`；`LIFEGAME_WARNINGS_AS_ERRORS=ON` 时视为错误；
-  默认 `-fno-exceptions`，异常在编译期被拒绝。
+- 编译开启 `-Wall -Wextra -Wpedantic`（在 `life_game.pri` 里统一设置）；默认
+  `-fno-exceptions`，异常在编译期被拒绝。要当错误处理就加
+  `"QMAKE_CXXFLAGS+=-Werror"`。
 - `python3 tools/check_layering.py .` 检查 include 方向、`src/`/`..` 绕过、
-  Domain/Shared/Model 的 Qt/中文纯净度、View/Service 的 Model 隔离、`CMakeLists.txt`
-  源文件清单与 target 链接方向。
+  Domain/Shared/Model 的 Qt/中文纯净度、View/Service 的 Model 隔离、以及
+  `life_game.pri` 的源文件清单是否完整。
 - `tools/layering_selftest.py` 用负向 fixture 验证门禁确实会失败。
-- CI：普通构建 + ASan/UBSan 两个 job，均执行完整 CTest。
-- 新增源文件必须显式加入 `CMakeLists.txt`（禁止 glob），并放入正确的层目录。
+- CI：普通构建 + ASan/UBSan 两个 job，均执行 `tests/run_all.sh`。
+- 新增源文件必须显式加入 `life_game.pri`（禁止 glob），并放入正确的层目录。
 
 ## 设计细节
 
@@ -378,7 +375,7 @@ UI 测试输出 `/tmp/lifegame-ui-tests.png`。CTest 为 UI 用例设置
 - 文件对话框不记忆上次打开目录；
 - 日志文件不处理多实例并发轮转；
 - 分配失败/OOM 被视为不可恢复（`-fno-exceptions` 下进程终止），不会弹错误框；
-- 未提供 `.desktop`/安装包集成，仅提供 CMake install 规则。
+- 未提供 `.desktop`/安装包集成；安装即拷贝 `build/app/bin/lifegame`。
 
 ## 第三方资源
 

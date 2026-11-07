@@ -89,33 +89,26 @@ def target_layer(name: str) -> str | None:
     return None
 
 
-def check_cmake(root: Path, sources: list[Path]) -> list[str]:
+def check_manifest(root: Path, sources: list[Path]) -> list[str]:
+    """源码清单是否完整。
+
+    构建从 CMake 换成了 qmake 之后，清单的唯一事实源是 life_game.pri 里的
+    LIFEGAME_*_SOURCES / *_HEADERS。它同时被主程序和每个测试 include，所以
+    "某个 .cpp 忘了登记"在任何一个工程里都编不进去——但仍要在这里点出来：
+    那种情况下编译能过（只是少了那个文件的符号），问题要留到链接或者运行时才露。
+    """
     problems: list[str] = []
-    cmake_path = root / "CMakeLists.txt"
-    if not cmake_path.is_file():
-        return ["CMakeLists.txt is missing"]
-    text = cmake_path.read_text(encoding="utf-8", errors="replace")
+    manifest = root / "life_game.pri"
+    if not manifest.is_file():
+        return ["life_game.pri is missing"]
+    text = manifest.read_text(encoding="utf-8", errors="replace")
 
     for source in sources:
         rel = source.relative_to(root).as_posix()
         if rel not in text:
-            problems.append(f"{source}: source file is not listed in CMakeLists.txt")
+            problems.append(f"{source}: source file is not listed in life_game.pri")
 
-    for match in TARGET_RE.finditer(text):
-        owner = match.group(1)
-        owner_layer = target_layer(owner)
-        if owner_layer is None:
-            continue
-        for dependency in re.findall(r'lifegame(?:_[A-Za-z0-9_]+)?', match.group(2)):
-            dependency_layer = target_layer(dependency)
-            if dependency_layer is None:
-                continue
-            if dependency_layer not in ALLOWED[owner_layer]:
-                problems.append(
-                    f"CMakeLists.txt: {owner} ({owner_layer}) links {dependency} ({dependency_layer})"
-                )
     return problems
-
 
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
@@ -169,7 +162,7 @@ def main() -> int:
                     f"{path}:{lineno}: {layer} may not include {target_layer} ({canonical})"
                 )
 
-    problems.extend(check_cmake(root, sources))
+    problems.extend(check_manifest(root, sources))
 
     if problems:
         print("Architecture violations:")
